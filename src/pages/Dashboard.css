@@ -1,0 +1,144 @@
+.dash-container {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  gap: 15px;
+  padding: 15px;
+  box-sizing: border-box;
+  font-family: Arial, sans-serif;
+  background-color: #f8fafc;
+  color: #334155;
+  overflow-y: auto;
+}
+
+.dash-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background-color: #ffffff;
+  padding: 12px 20px;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+}
+
+.dash-branding {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+}
+
+.dash-branding h2 {
+  font-size: 16px;
+  color: #0f172a;
+  margin: 0;
+}
+
+.dash-user-info {
+  font-size: 14px;
+  font-weight: 600;
+  color: #64748b;
+}
+
+.dash-section-title {
+  font-size: 14px;
+  font-weight: bold;
+  color: #0f172a;
+  border-bottom: 2px solid #cbd5e1;
+  padding-bottom: 6px;
+  margin-bottom: 15px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.dash-card-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 15px;
+}
+
+.dash-stat-card {
+  background-color: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 20px;
+  text-align: center;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+}
+
+.dash-stat-card h3 {
+  font-size: 24px;
+  font-weight: 800;
+  color: #16a34a;
+  margin: 8px 0 0 0;
+}
+
+.dash-stat-card span {
+  font-size: 13px;
+  font-weight: 600;
+  color: #64748b;
+  text-transform: uppercase;
+}
+
+.dash-bottom-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 15px;
+  margin-top: 5px;
+}
+
+.dash-box {
+  background-color: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 20px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.dash-quick-actions-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 5px;
+}
+
+.dash-btn-quick {
+  background-color: #f8fafc;
+  border: 1px solid #cbd5e1;
+  padding: 12px 16px;
+  border-radius: 6px;
+  font-weight: bold;
+  font-size: 14px;
+  color: #0f172a;
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.2s;
+}
+
+.dash-btn-quick:hover {
+  background-color: #e2e8f0;
+  border-color: #94a3b8;
+}
+
+.dash-alert-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 5px;
+}
+
+.dash-alert-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 14px;
+  background-color: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 6px;
+  font-size: 13px;
+  color: #991b1b;
+  font-weight: 600;
+}

@@ -1,0 +1,122 @@
+/* Reseteo completo de estilos por defecto */
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+/* 1. Definición de Variables CSS */
+
+/* Modo Claro (por defecto) */
+:root {
+  --bg-app: #f4f6f8;
+  --bg-sidebar: #0f172a;
+  --text-sidebar: #94a3b8;
+  --text-sidebar-hover: #ffffff;
+  --btn-sidebar-hover: #1e293b;
+  --accent-color: #38bdf8;
+  --active-btn: #2563eb;
+  --text-main: #333333;
+}
+
+/* Modo Oscuro (se activa dinámicamente con data-theme="dark") */
+[data-theme="dark"] {
+  --bg-app: #0f172a;
+  --bg-sidebar: #020617;
+  --text-sidebar: #94a3b8;
+  --text-sidebar-hover: #ffffff;
+  --btn-sidebar-hover: #1e293b;
+  --accent-color: #38bdf8;
+  --active-btn: #2563eb;
+  --text-main: #f8fafc;
+}
+
+/* Cambia 100vw y 100vh por 100% en la raíz */
+html, body, #root {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+  background-color: var(--bg-app);
+  color: var(--text-main);
+}
+
+/* Contenedor principal */
+.app-container {
+  display: flex;
+  flex-direction: row;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background-color: var(--bg-app);
+}
+
+/* Sidebar fijo a la izquierda */
+.sidebar {
+  width: 220px;
+  min-width: 220px;
+  height: 100%; 
+  background-color: var(--bg-sidebar);
+  color: #ffffff;
+  display: flex;
+  flex-direction: column;
+  padding: 16px;
+  gap: 20px;
+}
+
+/* 👈 Ajustes para centrar y dimensionar el nuevo logo */
+.sidebar-header {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 10px 0;
+}
+
+.sidebar-logo {
+  width: 100%;
+  max-width: 150px; /* Ajusta este valor si tu logo se ve muy grande o pequeño */
+  height: auto;
+  object-fit: contain;
+}
+
+.sidebar-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sidebar-nav button {
+  background: none;
+  border: none;
+  color: var(--text-sidebar);
+  padding: 10px 12px;
+  text-align: left;
+  font-size: 13px;
+  font-weight: 600;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.sidebar-nav button:hover {
+  background-color: var(--btn-sidebar-hover);
+  color: var(--text-sidebar-hover);
+}
+
+.sidebar-nav button.active {
+  background-color: var(--active-btn);
+  color: #ffffff;
+}
+
+/* Área de contenido dinámico */
+.main-content {
+  flex: 1;
+  height: 100%;
+  display: flex; 
+  flex-direction: column; 
+  overflow: hidden; 
+  padding: 16px;
+  background-color: var(--bg-app);
+}
