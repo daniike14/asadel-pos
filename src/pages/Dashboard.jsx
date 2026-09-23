@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import logoAsadel from '../assets/Logo.jpg';
 import './Dashboard.css';
+import { API_URL } from '../config';
 
 export default function Dashboard({ cambiarModulo }) {
   const [resumen, setResumen] = useState({
@@ -12,7 +13,7 @@ export default function Dashboard({ cambiarModulo }) {
 
   const cargarResumenDashboard = async () => {
     try {
-      const res = await fetch('http://localhost:3001/api/dashboard/resumen');
+      const res = await fetch('${API_URL}/api/dashboard/resumen');
       if (res.ok) {
         const data = await res.json();
         setResumen({

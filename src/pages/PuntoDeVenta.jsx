@@ -38,8 +38,8 @@ export default function PuntoDeVenta() {
   const cargarDatosBD = async () => {
     try {
       const [resProd, resPromo] = await Promise.all([
-        fetch('http://localhost:3001/api/productos'),
-        fetch('http://localhost:3001/api/promociones')
+        fetch('${API_URL}/api/productos'),
+        fetch('${API_URL}/api/promociones')
       ]);
 
       if (resProd.ok) {
@@ -327,7 +327,7 @@ export default function PuntoDeVenta() {
     };
 
     try {
-      const res = await fetch('http://localhost:3001/api/ventas', {
+      const res = await fetch('${API_URL}/api/ventas', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payloadVenta)

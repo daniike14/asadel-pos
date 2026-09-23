@@ -92,10 +92,10 @@ export default function GestionProductos() {
     const cargarCatalogos = async () => {
         try {
             const [resDeptos, resCats, resProvs, resPromos] = await Promise.all([
-                fetch('http://localhost:3001/api/departamentos'),
-                fetch('http://localhost:3001/api/categorias'),
-                fetch('http://localhost:3001/api/proveedores'),
-                fetch('http://localhost:3001/api/promociones'),
+                fetch('${API_URL}/api/departamentos'),
+                fetch('${API_URL}/api/categorias'),
+                fetch('${API_URL}/api/proveedores'),
+                fetch('${API_URL}/api/promociones'),
             ]);
 
             if (resDeptos.ok) setDepartamentos(await resDeptos.json());
@@ -110,7 +110,7 @@ export default function GestionProductos() {
     const cargarProductos = async () => {
         setCargando(true);
         try {
-            const res = await fetch('http://localhost:3001/api/productos');
+            const res = await fetch('${API_URL}/api/productos');
             if (res.ok) {
                 const data = await res.json();
                 setProductos(data);
@@ -132,7 +132,7 @@ export default function GestionProductos() {
         if (!nuevaPromoNombre.trim()) return alert('Escribe el nombre de la promoción.');
 
         try {
-            const res = await fetch('http://localhost:3001/api/promociones', {
+            const res = await fetch('${API_URL}/api/promociones', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -156,7 +156,7 @@ export default function GestionProductos() {
     const eliminarPromocion = async (id, nombre) => {
         if (!window.confirm(`¿Estás seguro de eliminar la promoción "${nombre}"?`)) return;
         try {
-            const res = await fetch(`http://localhost:3001/api/promociones/${id}`, { method: 'DELETE' });
+            const res = await fetch(`${API_URL}/api/promociones/${id}`, { method: 'DELETE' });
             if (res.ok) {
                 alert('Promoción eliminada.');
                 cargarCatalogos();
@@ -217,7 +217,7 @@ export default function GestionProductos() {
     const handleEliminarProducto = async (id, nombre) => {
         if (!window.confirm(`¿Estás seguro de eliminar el producto "${nombre}"?`)) return;
         try {
-            const res = await fetch(`http://localhost:3001/api/productos/${id}`, { method: 'DELETE' });
+            const res = await fetch(`${API_URL}/api/productos/${id}`, { method: 'DELETE' });
             if (res.ok) {
                 alert('Producto eliminado correctamente.');
                 cargarProductos();
@@ -299,7 +299,7 @@ export default function GestionProductos() {
         e.preventDefault();
         const payload = { ...datosForm, ...opciones };
         const esEdicion = Boolean(datosForm.id);
-        const url = esEdicion ? `http://localhost:3001/api/productos/${datosForm.id}` : 'http://localhost:3001/api/productos';
+        const url = esEdicion ? `${API_URL}/api/productos/${datosForm.id}` : '${API_URL}/api/productos';
         const method = esEdicion ? 'PUT' : 'POST';
 
         try {
@@ -326,9 +326,9 @@ export default function GestionProductos() {
         e.preventDefault();
         let url = '';
         let body = {};
-        if (modalTipo === 'departamento') { url = 'http://localhost:3001/api/departamentos'; body = { nombre: nuevoNombre }; }
-        else if (modalTipo === 'categoria') { url = 'http://localhost:3001/api/categorias'; body = { nombre: nuevoNombre }; }
-        else if (modalTipo === 'proveedor') { url = 'http://localhost:3001/api/proveedores'; body = { nombre: nuevoNombre, telefono: nuevoTelefono, contacto: nuevoContacto }; }
+        if (modalTipo === 'departamento') { url = '${API_URL}/api/departamentos'; body = { nombre: nuevoNombre }; }
+        else if (modalTipo === 'categoria') { url = '${API_URL}api/categorias'; body = { nombre: nuevoNombre }; }
+        else if (modalTipo === 'proveedor') { url = '${API_URL}/api/proveedores'; body = { nombre: nuevoNombre, telefono: nuevoTelefono, contacto: nuevoContacto }; }
 
         try {
             const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
