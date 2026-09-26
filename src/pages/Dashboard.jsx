@@ -13,7 +13,7 @@ export default function Dashboard({ cambiarModulo }) {
 
   const cargarResumenDashboard = async () => {
     try {
-      const res = await fetch('${API_URL}/api/dashboard/resumen');
+      const res = await fetch(`${API_URL}/api/dashboard/resumen`);
       if (res.ok) {
         const data = await res.json();
         setResumen({
