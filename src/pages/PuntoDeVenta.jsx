@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import logoAsadel from '../assets/Logo.jpg';
 import './PuntoDeVenta.css';
+import { API_URL } from '../config';
 
 const formatoEmpaque = (totalPiezas, piezasPorCaja) => {
   if (!piezasPorCaja || piezasPorCaja <= 1) {

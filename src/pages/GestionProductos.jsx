@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import logoAsadel from '../assets/Logo.jpg';
 import './GestionProductos.css';
+import { API_URL } from '../config';
 
 const estadoInicialForm = {
     id: null,
