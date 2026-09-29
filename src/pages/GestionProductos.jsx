@@ -41,7 +41,7 @@ export default function GestionProductos() {
     const fileInputRef = useRef(null);
     const kitBuscadorRef = useRef(null);
 
-    const [vista, setVista] = useState('catalogo'); // 'catalogo' | 'formulario' | 'promociones' | 'kits'
+    const [vista, setVista] = useState('catalogo'); // 'catalogo' | 'formulario' | 'promociones' | 'kits' | 'gestion_catalogos'
     const [pestanaActiva, setPestanaActiva] = useState('generales');
 
     const [departamentos, setDepartamentos] = useState([]);
@@ -50,6 +50,13 @@ export default function GestionProductos() {
     const [productos, setProductos] = useState([]);
     const [promociones, setPromociones] = useState([]);
     const [kits, setKits] = useState([]);
+
+    // Subpestañas para Gestión de Catálogos (Deptos, Cats, Provs)
+    const [subvistaCatalogo, setSubvistaCatalogo] = useState('departamentos');
+    const [modalEditCatalog, setModalEditCatalog] = useState(null); // { tipo: 'departamento'|'categoria'|'proveedor', item: obj }
+    const [editNombre, setEditNombre] = useState('');
+    const [editTelefono, setEditTelefono] = useState('');
+    const [editContacto, setEditContacto] = useState('');
 
     // Formulario de Promociones
     const [nuevaPromoNombre, setNuevaPromoNombre] = useState('');
@@ -126,15 +133,36 @@ export default function GestionProductos() {
     useEffect(() => {
         const termino = busquedaProductoKit.trim().toLowerCase();
         if (termino.length >= 1) {
-            const coincidencias = productos
-                .filter(p => !p.esServicio && !p.esKit)
-                .filter(p => 
-                    p.nombre.toLowerCase().includes(termino) || 
-                    (p.codigoBarras && p.codigoBarras.toLowerCase().includes(termino))
-                )
-                .slice(0, 6);
-            setSugerenciasKit(coincidencias);
-            setMostrarSugerenciasKit(coincidencias.length > 0);
+            const listaOpciones = [];
+            productos.filter(p => !p.esServicio && !p.esKit).forEach(p => {
+                const coincide = p.nombre.toLowerCase().includes(termino) || (p.codigoBarras && p.codigoBarras.toLowerCase().includes(termino));
+                if (coincide) {
+                    const pzsPaq = parseInt(p.piezasPorPaquete, 10) || 1;
+                    const precioPza = parseFloat(p.precioVenta) || 0;
+                    const precioPaq = parseFloat(p.precioVentaPaquete) > 0 ? parseFloat(p.precioVentaPaquete) : +(precioPza * pzsPaq).toFixed(2);
+
+                    listaOpciones.push({
+                        ...p,
+                        id_kit_item: `${p.id}_pza`,
+                        nombre_mostrar: p.nombre,
+                        precio_aplicar: precioPza,
+                        multiplicador: 1
+                    });
+
+                    if (pzsPaq > 1) {
+                        listaOpciones.push({
+                            ...p,
+                            id_kit_item: `${p.id}_pkg`,
+                            nombre_mostrar: `📦 [PAQ. ${pzsPaq} pzs] ${p.nombre}`,
+                            precio_aplicar: precioPaq,
+                            multiplicador: pzsPaq
+                        });
+                    }
+                }
+            });
+
+            setSugerenciasKit(listaOpciones.slice(0, 8));
+            setMostrarSugerenciasKit(listaOpciones.length > 0);
         } else {
             setSugerenciasKit([]);
             setMostrarSugerenciasKit(false);
@@ -215,32 +243,36 @@ export default function GestionProductos() {
     };
 
     // Funciones del Kit
-    const seleccionarProductoKit = (prod) => {
-        setProductoSeleccionadoKit(prod);
-        setBusquedaProductoKit(prod.nombre);
+    const seleccionarProductoKit = (itemOpcion) => {
+        setProductoSeleccionadoKit(itemOpcion);
+        setBusquedaProductoKit(itemOpcion.nombre_mostrar);
         setMostrarSugerenciasKit(false);
     };
 
     const agregarItemAlKit = () => {
         if (!productoSeleccionadoKit) {
-            return alert('⚠️️ Busca y selecciona un producto del catálogo para añadirlo al kit.');
+            return alert('⚠️ Busca y selecciona un producto del catálogo para añadirlo al kit.');
         }
         const cant = parseFloat(cantidadSeleccionadaKit);
         if (isNaN(cant) || cant <= 0) return alert('Ingresa una cantidad válida.');
 
+        const piezasRealesTotal = +(cant * (productoSeleccionadoKit.multiplicador || 1)).toFixed(3);
+
         const existente = kitComponentes.find((item) => item.producto_id === productoSeleccionadoKit.id);
         if (existente) {
             setKitComponentes(kitComponentes.map((item) => 
-                item.producto_id === productoSeleccionadoKit.id ? { ...item, cantidad: +(item.cantidad + cant).toFixed(3) } : item
+                item.producto_id === productoSeleccionadoKit.id 
+                    ? { ...item, cantidad: +(item.cantidad + piezasRealesTotal).toFixed(3) } 
+                    : item
             ));
         } else {
             setKitComponentes([
                 ...kitComponentes,
                 {
                     producto_id: productoSeleccionadoKit.id,
-                    nombre: productoSeleccionadoKit.nombre,
-                    precioUnitario: parseFloat(productoSeleccionadoKit.precioVenta) || 0,
-                    cantidad: cant
+                    nombre: productoSeleccionadoKit.nombre_mostrar,
+                    precioUnitario: productoSeleccionadoKit.precio_aplicar,
+                    cantidad: piezasRealesTotal
                 }
             ]);
         }
@@ -309,9 +341,76 @@ export default function GestionProductos() {
     };
 
     const costoSumaComponentes = kitComponentes.reduce(
-        (acc, it) => acc + it.precioUnitario * it.cantidad,
+        (acc, it) => acc + (it.precioUnitario || 0) * (it.cantidad || 1),
         0
     );
+
+    // Funciones de Gestión de Catálogos (Editar/Eliminar Deptos, Cats, Provs)
+    const abrirModalEditarCat = (tipo, item) => {
+        setModalEditCatalog({ tipo, item });
+        setEditNombre(item.nombre || '');
+        setEditTelefono(item.telefono || '');
+        setEditContacto(item.contacto || '');
+    };
+
+    const guardarEdicionCat = async (e) => {
+        e.preventDefault();
+        const { tipo, item } = modalEditCatalog;
+        let url = '';
+        let body = {};
+
+        if (tipo === 'departamento') {
+            url = `${API_URL}/api/departamentos/${item.id}`;
+            body = { nombre: editNombre };
+        } else if (tipo === 'categoria') {
+            url = `${API_URL}/api/categorias/${item.id}`;
+            body = { nombre: editNombre };
+        } else if (tipo === 'proveedor') {
+            url = `${API_URL}/api/proveedores/${item.id}`;
+            body = { nombre: editNombre, telefono: editTelefono, contacto: editContacto };
+        }
+
+        try {
+            const res = await fetch(url, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body)
+            });
+
+            if (res.ok) {
+                alert('✅ Actualizado correctamente.');
+                setModalEditCatalog(null);
+                cargarCatalogos();
+                cargarProductos();
+            } else {
+                const data = await res.json();
+                alert(data.error || 'Error al actualizar.');
+            }
+        } catch {
+            alert('Error de conexión.');
+        }
+    };
+
+    const eliminarElementoCat = async (tipo, item) => {
+        if (!window.confirm(`¿Seguro que deseas eliminar "${item.nombre}"?`)) return;
+        let url = '';
+        if (tipo === 'departamento') url = `${API_URL}/api/departamentos/${item.id}`;
+        else if (tipo === 'categoria') url = `${API_URL}/api/categorias/${item.id}`;
+        else if (tipo === 'proveedor') url = `${API_URL}/api/proveedores/${item.id}`;
+
+        try {
+            const res = await fetch(url, { method: 'DELETE' });
+            if (res.ok) {
+                alert('✅ Eliminado correctamente.');
+                cargarCatalogos();
+            } else {
+                const data = await res.json();
+                alert(data.error || 'No se pudo eliminar.');
+            }
+        } catch {
+            alert('Error de conexión.');
+        }
+    };
 
     // Historial de compras
     const abrirHistorialCostos = async (prod) => {
@@ -338,7 +437,7 @@ export default function GestionProductos() {
 
     const registrarNuevaCompra = async (e) => {
         e.preventDefault();
-        if (!datosNuevaCompra.proveedor.trim()) return alert('⚠️️ Indica el proveedor o lugar de compra.');
+        if (!datosNuevaCompra.proveedor.trim()) return alert('⚠️ Indica el proveedor o lugar de compra.');
         if (!datosNuevaCompra.costoUnitario) return alert('⚠️ Ingresa el costo unitario de la compra.');
 
         try {
@@ -635,6 +734,7 @@ export default function GestionProductos() {
                         {vista === 'catalogo' ? 'CATÁLOGO DE PRODUCTOS' : 
                          vista === 'promociones' ? 'GESTIÓN DE PROMOCIONES' : 
                          vista === 'kits' ? 'PAQUETES Y KITS ESCOLARES' :
+                         vista === 'gestion_catalogos' ? 'ADMINISTRACIÓN DE DEPARTAMENTOS Y PROVEEDORES' :
                          datosForm.id ? 'EDITAR PRODUCTO' : 'AGREGAR NUEVO PRODUCTO'}
                     </h2>
                 </div>
@@ -642,7 +742,7 @@ export default function GestionProductos() {
                 <div className="gp-header-actions">
                     {vista !== 'formulario' ? (
                         <>
-                            {/* Pestañas de navegación idénticas a Historial y Reportes */}
+                            {/* Pestañas de navegación superiores */}
                             <div className="gp-tabs-nav">
                                 <button 
                                     className={`gp-tab-nav-btn ${vista === 'catalogo' ? 'active' : ''}`}
@@ -665,6 +765,12 @@ export default function GestionProductos() {
                                 >
                                     🏷️ Promociones ({promociones.length})
                                 </button>
+                                <button 
+                                    className={`gp-tab-nav-btn ${vista === 'gestion_catalogos' ? 'active' : ''}`}
+                                    onClick={() => setVista('gestion_catalogos')}
+                                >
+                                    📂 Deptos y Proveedores
+                                </button>
                             </div>
 
                             {vista === 'catalogo' && (
@@ -685,7 +791,7 @@ export default function GestionProductos() {
                                             </div>
                                         )}
                                     </div>
-                                    <button className="btn-secondary" onClick={() => fileInputRef.current.click()}>⬆️ Importar</button>
+                                    <button className="btn-secondary" onClick={() => fileInputRef.current.click()}>⬆️️ Importar</button>
                                     <input type="file" ref={fileInputRef} style={{ display: 'none' }} accept=".csv" onChange={handleImportarVacio} />
                                     <button className="btn-secondary" onClick={handleExportarVacio}>⬇️ Exportar CSV</button>
                                     <button className="btn-primary" onClick={handleNuevoProducto}>+ Agregar Producto</button>
@@ -699,6 +805,117 @@ export default function GestionProductos() {
                     )}
                 </div>
             </header>
+
+            {/* VISTA DE GESTIÓN DE DEPARTAMENTOS, CATEGORÍAS Y PROVEEDORES */}
+            {vista === 'gestion_catalogos' && (
+                <div className="gp-catalogo-view" style={{ maxWidth: '900px', margin: '0 auto' }}>
+                    <div style={{ display: 'flex', gap: '8px', borderBottom: '2px solid #e2e8f0', paddingBottom: '10px' }}>
+                        <button className={`gp-tab-btn ${subvistaCatalogo === 'departamentos' ? 'active' : ''}`} onClick={() => setSubvistaCatalogo('departamentos')}>
+                            🏢 Departamentos ({departamentos.length})
+                        </button>
+                        <button className={`gp-tab-btn ${subvistaCatalogo === 'categorias' ? 'active' : ''}`} onClick={() => setSubvistaCatalogo('categorias')}>
+                            🏷️ Categorías ({categorias.length})
+                        </button>
+                        <button className={`gp-tab-btn ${subvistaCatalogo === 'proveedores' ? 'active' : ''}`} onClick={() => setSubvistaCatalogo('proveedores')}>
+                            🚚 Proveedores ({proveedores.length})
+                        </button>
+                    </div>
+
+                    {subvistaCatalogo === 'departamentos' && (
+                        <div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', margin: '15px 0' }}>
+                                <h3>Administrar Departamentos</h3>
+                                <button className="btn-primary" onClick={() => setModalTipo('departamento')}>+ Nuevo Departamento</button>
+                            </div>
+                            <table className="gp-table">
+                                <thead>
+                                    <tr>
+                                        <th>ID</th>
+                                        <th>Nombre del Departamento</th>
+                                        <th style={{ textAlign: 'center', width: '120px' }}>Acciones</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {departamentos.map((d) => (
+                                        <tr key={d.id}>
+                                            <td>#{d.id}</td>
+                                            <td><strong>{d.nombre}</strong></td>
+                                            <td style={{ textAlign: 'center' }}>
+                                                <button className="btn-action edit" onClick={() => abrirModalEditarCat('departamento', d)} title="Editar" style={{ marginRight: '6px' }}>✏️</button>
+                                                <button className="btn-action delete" onClick={() => eliminarElementoCat('departamento', d)} title="Eliminar">🗑️</button>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    )}
+
+                    {subvistaCatalogo === 'categorias' && (
+                        <div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', margin: '15px 0' }}>
+                                <h3>Administrar Categorías</h3>
+                                <button className="btn-primary" onClick={() => setModalTipo('categoria')}>+ Nueva Categoría</button>
+                            </div>
+                            <table className="gp-table">
+                                <thead>
+                                    <tr>
+                                        <th>ID</th>
+                                        <th>Nombre de la Categoría</th>
+                                        <th style={{ textAlign: 'center', width: '120px' }}>Acciones</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {categorias.map((c) => (
+                                        <tr key={c.id}>
+                                            <td>#{c.id}</td>
+                                            <td><strong>{c.nombre}</strong></td>
+                                            <td style={{ textAlign: 'center' }}>
+                                                <button className="btn-action edit" onClick={() => abrirModalEditarCat('categoria', c)} title="Editar" style={{ marginRight: '6px' }}>✏️</button>
+                                                <button className="btn-action delete" onClick={() => eliminarElementoCat('categoria', c)} title="Eliminar">🗑️</button>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    )}
+
+                    {subvistaCatalogo === 'proveedores' && (
+                        <div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', margin: '15px 0' }}>
+                                <h3>Administrar Proveedores</h3>
+                                <button className="btn-primary" onClick={() => setModalTipo('proveedor')}>+ Nuevo Proveedor</button>
+                            </div>
+                            <table className="gp-table">
+                                <thead>
+                                    <tr>
+                                        <th>ID</th>
+                                        <th>Nombre / Empresa</th>
+                                        <th>Teléfono</th>
+                                        <th>Contacto</th>
+                                        <th style={{ textAlign: 'center', width: '120px' }}>Acciones</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {proveedores.map((p) => (
+                                        <tr key={p.id}>
+                                            <td>#{p.id}</td>
+                                            <td><strong>{p.nombre}</strong></td>
+                                            <td>{p.telefono || '—'}</td>
+                                            <td>{p.contacto || '—'}</td>
+                                            <td style={{ textAlign: 'center' }}>
+                                                <button className="btn-action edit" onClick={() => abrirModalEditarCat('proveedor', p)} title="Editar" style={{ marginRight: '6px' }}>✏️</button>
+                                                <button className="btn-action delete" onClick={() => eliminarElementoCat('proveedor', p)} title="Eliminar">🗑️</button>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    )}
+                </div>
+            )}
 
             {/* VISTA DE KITS Y PAQUETES */}
             {vista === 'kits' && (
@@ -770,21 +987,23 @@ export default function GestionProductos() {
                                     />
                                     {mostrarSugerenciasKit && sugerenciasKit.length > 0 && (
                                         <ul className="kit-autocomplete-dropdown">
-                                            {sugerenciasKit.map((prod) => (
+                                            {sugerenciasKit.map((itemOpcion) => (
                                                 <li 
-                                                    key={prod.id} 
+                                                    key={itemOpcion.id_kit_item} 
                                                     className="kit-autocomplete-item"
                                                     onMouseDown={(e) => {
                                                         e.preventDefault();
-                                                        seleccionarProductoKit(prod);
+                                                        seleccionarProductoKit(itemOpcion);
                                                     }}
                                                 >
                                                     <div>
-                                                        <strong>{prod.nombre}</strong>
-                                                        <div style={{ fontSize: '11px', color: '#64748b' }}>Cód: {prod.codigoBarras || 'S/N'}</div>
+                                                        <strong>{itemOpcion.nombre_mostrar}</strong>
+                                                        <div style={{ fontSize: '11px', color: '#64748b' }}>
+                                                            Cód: {itemOpcion.codigoBarras || 'S/N'} {itemOpcion.multiplicador > 1 ? `(${itemOpcion.multiplicador} pzs/paq)` : ''}
+                                                        </div>
                                                     </div>
                                                     <span style={{ fontWeight: 'bold', color: '#16a34a' }}>
-                                                        ${parseFloat(prod.precioVenta || 0).toFixed(2)}
+                                                        ${parseFloat(itemOpcion.precio_aplicar || 0).toFixed(2)}
                                                     </span>
                                                 </li>
                                             ))}
@@ -797,7 +1016,7 @@ export default function GestionProductos() {
                                     min="0.1" 
                                     value={cantidadSeleccionadaKit} 
                                     onChange={(e) => setCantidadSeleccionadaKit(e.target.value)} 
-                                    title="Cantidad de piezas en el kit"
+                                    title="Cantidad de piezas o paquetes a añadir al kit"
                                 />
                                 <button type="button" className="btn-primary" onClick={agregarItemAlKit}>
                                     + Agregar
@@ -1508,6 +1727,37 @@ export default function GestionProductos() {
                         <button type="submit" className="btn-save">[ {datosForm.id ? 'ACTUALIZAR' : 'GUARDAR'} ]</button>
                     </div>
                 </form>
+            )}
+
+            {/* MODAL EDITAR DEPARTAMENTO, CATEGORÍA O PROVEEDOR */}
+            {modalEditCatalog && (
+                <div className="gp-modal-overlay">
+                    <div className="gp-modal">
+                        <h3>Editar {modalEditCatalog.tipo.charAt(0).toUpperCase() + modalEditCatalog.tipo.slice(1)}</h3>
+                        <form onSubmit={guardarEdicionCat}>
+                            <div className="form-group">
+                                <label>Nombre:</label>
+                                <input type="text" value={editNombre} onChange={(e) => setEditNombre(e.target.value)} required autoFocus />
+                            </div>
+                            {modalEditCatalog.tipo === 'proveedor' && (
+                                <>
+                                    <div className="form-group" style={{ marginTop: '10px' }}>
+                                        <label>Teléfono:</label>
+                                        <input type="text" value={editTelefono} onChange={(e) => setEditTelefono(e.target.value)} />
+                                    </div>
+                                    <div className="form-group" style={{ marginTop: '10px' }}>
+                                        <label>Contacto:</label>
+                                        <input type="text" value={editContacto} onChange={(e) => setEditContacto(e.target.value)} />
+                                    </div>
+                                </>
+                            )}
+                            <div className="gp-modal-actions">
+                                <button type="button" className="btn-cancel" onClick={() => setModalEditCatalog(null)}>Cancelar</button>
+                                <button type="submit" className="btn-save">Guardar Cambios</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
             )}
 
             {modalTipo && (

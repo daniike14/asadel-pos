@@ -13,7 +13,8 @@ export default function GestionEmpresa({ volverAlDashboard }) {
     direccion: '',
     telefono: '',
     mensaje_ticket: '',
-    logo: ''
+    logo: '',
+    imprimir_ticket_auto: true
   });
 
   // Lista de Usuarios
@@ -37,7 +38,13 @@ export default function GestionEmpresa({ volverAlDashboard }) {
         fetch(`${API_URL}/api/usuarios`)
       ]);
 
-      if (resEmpresa.ok) setDatosEmpresa(await resEmpresa.json());
+      if (resEmpresa.ok) {
+        const dataEmp = await resEmpresa.json();
+        setDatosEmpresa({
+          ...dataEmp,
+          imprimir_ticket_auto: dataEmp.imprimir_ticket_auto !== undefined ? Boolean(dataEmp.imprimir_ticket_auto) : true
+        });
+      }
       if (resUsuarios.ok) setUsuarios(await resUsuarios.json());
     } catch (err) {
       console.error('Error al cargar datos:', err);
@@ -69,7 +76,7 @@ export default function GestionEmpresa({ volverAlDashboard }) {
       });
 
       if (res.ok) {
-        alert('✅ ¡Datos de la empresa guardados correctamente!');
+        alert('✅ ¡Datos y configuración de la empresa guardados correctamente!');
       } else {
         alert('Error al guardar datos de la empresa.');
       }
@@ -238,6 +245,23 @@ export default function GestionEmpresa({ volverAlDashboard }) {
                 />
               </div>
             </div>
+          </div>
+
+          {/* Configuración operativa de venta y caja */}
+          <div style={{ marginTop: '14px', padding: '14px', backgroundColor: '#f1f5f9', borderRadius: '8px', border: '1px solid #cbd5e1' }}>
+            <h4 style={{ margin: '0 0 8px 0', color: '#0f172a', fontSize: '14px' }}>⚙️ Configuración Operativa en Caja</h4>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '13px', color: '#334155', cursor: 'pointer', fontWeight: 600 }}>
+              <input
+                type="checkbox"
+                style={{ width: '18px', height: '18px', cursor: 'pointer' }}
+                checked={Boolean(datosEmpresa.imprimir_ticket_auto)}
+                onChange={(e) => setDatosEmpresa({ ...datosEmpresa, imprimir_ticket_auto: e.target.checked })}
+              />
+              Imprimir comprobante / ticket automáticamente al confirmar el cobro
+            </label>
+            <small style={{ display: 'block', marginTop: '4px', color: '#64748b', fontSize: '12px' }}>
+              Si desactivas esta opción, al cobrar la venta se guardará inmediatamente y la caja quedará lista para el siguiente cliente sin abrir la ventana de impresión.
+            </small>
           </div>
 
           <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '10px' }}>

@@ -142,10 +142,13 @@ db.serialize(() => {
       precio_aplicado REAL NOT NULL,
       descuento_porcentaje REAL DEFAULT 0,
       comentario TEXT,
+      piezas_por_paquete REAL DEFAULT 1,
       FOREIGN KEY(venta_id) REFERENCES ventas(id),
       FOREIGN KEY(producto_id) REFERENCES productos(id)
     )
   `);
+
+  db.run(`ALTER TABLE detalle_ventas ADD COLUMN piezas_por_paquete REAL DEFAULT 1`, () => {});
 
   // TABLA DE ENTRADAS Y SALIDAS DE DINERO EN CAJA
   db.run(`
@@ -240,14 +243,16 @@ db.serialize(() => {
       direccion TEXT,
       telefono TEXT,
       mensaje_ticket TEXT,
-      logo TEXT
+      logo TEXT,
+      imprimir_ticket_auto BOOLEAN DEFAULT 1
     )
   `, () => {
+    db.run(`ALTER TABLE empresa_datos ADD COLUMN imprimir_ticket_auto BOOLEAN DEFAULT 1`, () => {});
     db.get('SELECT COUNT(*) as count FROM empresa_datos', (err, row) => {
       if (row && row.count === 0) {
         db.run(`
-          INSERT INTO empresa_datos (id, nombre, sucursal, direccion, telefono, mensaje_ticket)
-          VALUES (1, 'PAPELERÍA ASADEL', 'Sucursal Centro', 'Av. Principal #123, Col. Centro', '55 1234 5678', '¡Gracias por su compra y preferencia!')
+          INSERT INTO empresa_datos (id, nombre, sucursal, direccion, telefono, mensaje_ticket, imprimir_ticket_auto)
+          VALUES (1, 'PAPELERÍA ASADEL', 'Sucursal Centro', 'Av. Principal #123, Col. Centro', '55 1234 5678', '¡Gracias por su compra y preferencia!', 1)
         `);
       }
     });
@@ -556,7 +561,6 @@ app.get('/api/productos/:id/historial-costos', (req, res) => {
 });
 
 app.post('/api/productos/:id/registrar-compra', (req, res) => {
-  const { id } = req.params;
   const {
     proveedor,
     costoPaquete,
@@ -568,6 +572,7 @@ app.post('/api/productos/:id/registrar-compra', (req, res) => {
     actualizarPrecioVenta,
     nuevoPrecioVenta
   } = req.body;
+  const { id } = req.params;
 
   if (!proveedor || !costoUnitario) {
     return res.status(400).json({ error: 'Faltan datos obligatorios de la compra.' });
@@ -752,7 +757,7 @@ app.post('/api/corte-caja', (req, res) => {
   );
 });
 
-// Guardar Venta (Con validación estricta de inventario)
+// Guardar Venta (Con validación estricta de inventario soportando paquetes y piezas sueltas)
 app.post('/api/ventas', (req, res) => {
   const {
     folio,
@@ -772,9 +777,18 @@ app.post('/api/ventas', (req, res) => {
     return res.status(400).json({ error: 'No se puede procesar una venta sin artículos.' });
   }
 
-  // Filtrar productos físicos inventariados
-  const itemsFisicos = items.filter((it) => !it.esServicio && !it.noInventariado && it.id > 0 && !it.esKit);
-  const idsFisicos = itemsFisicos.map((it) => it.id);
+  // Agrupar la demanda física real requerida por ID de producto base
+  const demandaPorProducto = {};
+  items.forEach((item) => {
+    if (!item.esServicio && !item.noInventariado && item.id > 0 && !item.esKit) {
+      const cant = parseFloat(item.cantidad) || 0;
+      const pzsFactor = item.esVentaPaquete ? (parseFloat(item.piezasPorPaquete) || 1) : 1;
+      const piezasReales = cant * pzsFactor;
+      demandaPorProducto[item.id] = (demandaPorProducto[item.id] || 0) + piezasReales;
+    }
+  });
+
+  const idsFisicos = Object.keys(demandaPorProducto);
 
   const procesarGuardado = () => {
     const fechaHoraFinal = fecha_hora || new Date().toISOString();
@@ -799,15 +813,16 @@ app.post('/api/ventas', (req, res) => {
         const ventaId = this.lastID;
 
         const stmtDetalle = db.prepare(
-          `INSERT INTO detalle_ventas (venta_id, producto_id, cantidad, precio_aplicado, descuento_porcentaje, comentario) VALUES (?, ?, ?, ?, ?, ?)`
+          `INSERT INTO detalle_ventas (venta_id, producto_id, cantidad, precio_aplicado, descuento_porcentaje, comentario, piezas_por_paquete) VALUES (?, ?, ?, ?, ?, ?, ?)`
         );
         const stmtStock = db.prepare(`UPDATE productos SET invActual = invActual - ? WHERE id = ?`);
 
         items.forEach((item) => {
           const cantItem = parseFloat(item.cantidad) || 0;
+          const factorEmpaque = item.esVentaPaquete ? (parseFloat(item.piezasPorPaquete) || 1) : 1;
 
           if (item.esKit && item.kit_id) {
-            stmtDetalle.run(ventaId, item.id || 0, cantItem, item.precioUnitario, item.descuento || 0, `Kit: ${item.nombre}`);
+            stmtDetalle.run(ventaId, item.id || 0, cantItem, item.precioUnitario, item.descuento || 0, `Kit: ${item.nombre}`, 1);
 
             db.all(`SELECT producto_id, cantidad FROM kit_detalles WHERE kit_id = ?`, [item.kit_id], (errK, componentes) => {
               if (!errK && componentes) {
@@ -818,9 +833,11 @@ app.post('/api/ventas', (req, res) => {
               }
             });
           } else {
-            stmtDetalle.run(ventaId, item.id || 0, cantItem, item.precioUnitario, item.descuento || 0, item.comentario || '');
+            const notaItem = item.esVentaPaquete ? `[PAQUETE ${item.piezasPorPaquete} pzs] ${item.comentario || ''}`.trim() : (item.comentario || '');
+            stmtDetalle.run(ventaId, item.id || 0, cantItem, item.precioUnitario, item.descuento || 0, notaItem, factorEmpaque);
             if (!item.esServicio && !item.noInventariado && item.id > 0) {
-              stmtStock.run(cantItem, item.id);
+              const totalPiezasADescontar = cantItem * factorEmpaque;
+              stmtStock.run(totalPiezasADescontar, item.id);
             }
           }
         });
@@ -844,20 +861,18 @@ app.post('/api/ventas', (req, res) => {
     );
   };
 
-  // Verificación de stock en base de datos antes de cobrar
   if (idsFisicos.length > 0) {
     const placeholders = idsFisicos.map(() => '?').join(',');
     db.all(`SELECT id, nombre, invActual FROM productos WHERE id IN (${placeholders})`, idsFisicos, (errStock, prodsBD) => {
       if (errStock) return res.status(500).json({ error: errStock.message });
 
-      for (const itemVenta of itemsFisicos) {
-        const prodBD = prodsBD.find((p) => p.id === itemVenta.id);
-        const cantRequerida = parseFloat(itemVenta.cantidad) || 0;
-        const stockDisponible = parseFloat(prodBD?.invActual) || 0;
+      for (const prodBD of prodsBD) {
+        const requeridas = demandaPorProducto[prodBD.id] || 0;
+        const disponible = parseFloat(prodBD.invActual) || 0;
 
-        if (!prodBD || stockDisponible < cantRequerida) {
+        if (disponible < requeridas) {
           return res.status(400).json({
-            error: `Existencias insuficientes para "${itemVenta.nombre}". Stock disponible: ${stockDisponible} pz(s).`
+            error: `Existencias insuficientes para "${prodBD.nombre}". Requeridas: ${requeridas} pz(s), disponibles: ${disponible} pz(s).`
           });
         }
       }
@@ -868,7 +883,7 @@ app.post('/api/ventas', (req, res) => {
   }
 });
 
-// CANCELAR / ANULAR VENTA (Devuelve existencias y revierte puntos de lealtad)
+// CANCELAR / ANULAR VENTA (Devuelve existencias multiplicadas por piezas_por_paquete y revierte puntos de lealtad)
 app.post('/api/ventas/:id/cancelar', (req, res) => {
   const { id } = req.params;
 
@@ -884,7 +899,7 @@ app.post('/api/ventas/:id/cancelar', (req, res) => {
 
         db.run(`UPDATE ventas SET estado = 'cancelada' WHERE id = ?`, [id]);
 
-        // Regresar el inventario al stock físico
+        // Regresar el inventario al stock físico considerando si fue vendido en paquete
         const stmtStock = db.prepare(`
           UPDATE productos 
           SET invActual = invActual + ? 
@@ -893,7 +908,9 @@ app.post('/api/ventas/:id/cancelar', (req, res) => {
 
         detalles.forEach((det) => {
           if (det.producto_id && det.producto_id > 0) {
-            stmtStock.run(parseFloat(det.cantidad) || 0, det.producto_id);
+            const cant = parseFloat(det.cantidad) || 0;
+            const factor = parseFloat(det.piezas_por_paquete) || 1;
+            stmtStock.run(cant * factor, det.producto_id);
           }
         });
         stmtStock.finalize();
@@ -1288,8 +1305,8 @@ app.get('/api/clientes', (req, res) => {
 
 // Actualizar datos o saldo de puntos de un cliente
 app.put('/api/clientes/:id', (req, res) => {
-  const { id } = req.params;
   const { nombre, telefono, puntos_acumulados } = req.body;
+  const { id } = req.params;
 
   if (!nombre || !telefono) {
     return res.status(400).json({ error: 'Nombre y teléfono son obligatorios.' });
@@ -1345,26 +1362,40 @@ app.get('/api/clientes/:id/historial', (req, res) => {
 app.get('/api/empresa', (req, res) => {
   db.get('SELECT * FROM empresa_datos WHERE id = 1', [], (err, row) => {
     if (err) return res.status(500).json({ error: err.message });
-    res.json(row || {});
+    const datos = row || {};
+    
+    // SQLite guarda 0 o 1. Verificamos explícitamente que no sea 0 ni false.
+    const autoTicket = (datos.imprimir_ticket_auto === 0 || datos.imprimir_ticket_auto === '0' || datos.imprimir_ticket_auto === false) 
+      ? false 
+      : true;
+
+    res.json({
+      ...datos,
+      imprimir_ticket_auto: autoTicket
+    });
   });
 });
 
 app.post('/api/empresa', (req, res) => {
-  const { nombre, sucursal, direccion, telefono, mensaje_ticket, logo } = req.body;
+  const { nombre, sucursal, direccion, telefono, mensaje_ticket, logo, imprimir_ticket_auto } = req.body;
+
+  // Convertimos a 1 o 0 de forma estricta para SQLite
+  const autoTicket = (imprimir_ticket_auto === false || imprimir_ticket_auto === 0 || imprimir_ticket_auto === '0') ? 0 : 1;
 
   const sql = `
-    INSERT INTO empresa_datos (id, nombre, sucursal, direccion, telefono, mensaje_ticket, logo)
-    VALUES (1, ?, ?, ?, ?, ?, ?)
+    INSERT INTO empresa_datos (id, nombre, sucursal, direccion, telefono, mensaje_ticket, logo, imprimir_ticket_auto)
+    VALUES (1, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(id) DO UPDATE SET
       nombre = excluded.nombre,
       sucursal = excluded.sucursal,
       direccion = excluded.direccion,
       telefono = excluded.telefono,
       mensaje_ticket = excluded.mensaje_ticket,
-      logo = CASE WHEN excluded.logo IS NOT NULL AND excluded.logo != '' THEN excluded.logo ELSE empresa_datos.logo END
+      logo = CASE WHEN excluded.logo IS NOT NULL AND excluded.logo != '' THEN excluded.logo ELSE empresa_datos.logo END,
+      imprimir_ticket_auto = excluded.imprimir_ticket_auto
   `;
 
-  db.run(sql, [nombre || '', sucursal || '', direccion || '', telefono || '', mensaje_ticket || '', logo || null], function (err) {
+  db.run(sql, [nombre || '', sucursal || '', direccion || '', telefono || '', mensaje_ticket || '', logo || null, autoTicket], function (err) {
     if (err) return res.status(500).json({ error: err.message });
     res.json({ mensaje: 'Datos de la empresa actualizados correctamente.' });
   });
@@ -1397,8 +1428,8 @@ app.post('/api/usuarios', (req, res) => {
 });
 
 app.put('/api/usuarios/:id', (req, res) => {
-  const { id } = req.params;
   const { nombre, password, rol, activo } = req.body;
+  const { id } = req.params;
 
   let sql = `UPDATE usuarios SET nombre = ?, rol = ?, activo = ?`;
   const params = [nombre.trim(), rol, activo ? 1 : 0];
@@ -1659,6 +1690,84 @@ app.delete('/api/reportes/resurtido/manual/:id', (req, res) => {
   db.run(`DELETE FROM compras_manuales WHERE id = ?`, [id], function (err) {
     if (err) return res.status(500).json({ error: err.message });
     res.json({ mensaje: 'Encargo eliminado de la lista.' });
+  });
+});
+
+// --- DEPARTAMENTOS (PUT y DELETE) ---
+app.put('/api/departamentos/:id', (req, res) => {
+  const { id } = req.params;
+  const { nombre } = req.body;
+  if (!nombre || !nombre.trim()) return res.status(400).json({ error: 'El nombre es obligatorio.' });
+
+  db.run('UPDATE departamentos SET nombre = ? WHERE id = ?', [nombre.trim(), id], function (err) {
+    if (err) return res.status(400).json({ error: 'El departamento ya existe o hay un error.' });
+    if (this.changes === 0) return res.status(404).json({ error: 'Departamento no encontrado.' });
+    res.json({ mensaje: 'Departamento actualizado correctamente.' });
+  });
+});
+
+app.delete('/api/departamentos/:id', (req, res) => {
+  const { id } = req.params;
+  db.get('SELECT COUNT(*) as count FROM productos WHERE departamento_id = ?', [id], (err, row) => {
+    if (row && row.count > 0) {
+      return res.status(400).json({ error: `No se puede eliminar: hay ${row.count} producto(s) asignados a este departamento.` });
+    }
+    db.run('DELETE FROM departamentos WHERE id = ?', [id], function (errDel) {
+      if (errDel) return res.status(500).json({ error: 'Error al eliminar departamento.' });
+      res.json({ mensaje: 'Departamento eliminado correctamente.' });
+    });
+  });
+});
+
+// --- CATEGORÍAS (PUT y DELETE) ---
+app.put('/api/categorias/:id', (req, res) => {
+  const { id } = req.params;
+  const { nombre } = req.body;
+  if (!nombre || !nombre.trim()) return res.status(400).json({ error: 'El nombre es obligatorio.' });
+
+  db.run('UPDATE categorias SET nombre = ? WHERE id = ?', [nombre.trim(), id], function (err) {
+    if (err) return res.status(400).json({ error: 'La categoría ya existe o hay un error.' });
+    if (this.changes === 0) return res.status(404).json({ error: 'Categoría no encontrada.' });
+    res.json({ mensaje: 'Categoría actualizada correctamente.' });
+  });
+});
+
+app.delete('/api/categorias/:id', (req, res) => {
+  const { id } = req.params;
+  db.get('SELECT COUNT(*) as count FROM productos WHERE categoria_id = ?', [id], (err, row) => {
+    if (row && row.count > 0) {
+      return res.status(400).json({ error: `No se puede eliminar: hay ${row.count} producto(s) asignados a esta categoría.` });
+    }
+    db.run('DELETE FROM categorias WHERE id = ?', [id], function (errDel) {
+      if (errDel) return res.status(500).json({ error: 'Error al eliminar categoría.' });
+      res.json({ mensaje: 'Categoría eliminada correctamente.' });
+    });
+  });
+});
+
+// --- PROVEEDORES (PUT y DELETE) ---
+app.put('/api/proveedores/:id', (req, res) => {
+  const { id } = req.params;
+  const { nombre, telefono, contacto } = req.body;
+  if (!nombre || !nombre.trim()) return res.status(400).json({ error: 'El nombre es obligatorio.' });
+
+  db.run('UPDATE proveedores SET nombre = ?, telefono = ?, contacto = ? WHERE id = ?', [nombre.trim(), telefono || '', contacto || '', id], function (err) {
+    if (err) return res.status(400).json({ error: 'El proveedor ya existe o hay un error.' });
+    if (this.changes === 0) return res.status(404).json({ error: 'Proveedor no encontrado.' });
+    res.json({ mensaje: 'Proveedor actualizado correctamente.' });
+  });
+});
+
+app.delete('/api/proveedores/:id', (req, res) => {
+  const { id } = req.params;
+  db.get('SELECT COUNT(*) as count FROM productos WHERE proveedor_id = ?', [id], (err, row) => {
+    if (row && row.count > 0) {
+      return res.status(400).json({ error: `No se puede eliminar: hay ${row.count} producto(s) asignados a este proveedor.` });
+    }
+    db.run('DELETE FROM proveedores WHERE id = ?', [id], function (errDel) {
+      if (errDel) return res.status(500).json({ error: 'Error al eliminar proveedor.' });
+      res.json({ mensaje: 'Proveedor eliminado correctamente.' });
+    });
   });
 });
 

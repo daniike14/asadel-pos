@@ -751,10 +751,12 @@
   gap: 10px;
 }
 
+/* Fila del selector de productos para Kits */
 .kit-selector-row {
   display: flex;
-  gap: 8px;
-  align-items: flex-end;
+  gap: 10px;
+  align-items: center;
+  width: 100%;
 }
 
 .kit-selector-row select {
@@ -806,12 +808,66 @@
   font-weight: 600;
 }
 
-/* Autocompletado del Buscador en Kits */
+/* Buscador en Kits */
 .kit-search-wrapper {
   position: relative;
   flex: 1;
 }
 
+.kit-search-wrapper input {
+  width: 100%;
+  box-sizing: border-box;
+  height: 38px;
+  padding: 8px 12px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  font-size: 13px;
+  color: #0f172a;
+  background-color: #ffffff;
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.kit-search-wrapper input:focus {
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+}
+
+/* Input de cantidad para el kit */
+.kit-selector-row input[type="number"] {
+  width: 75px;
+  height: 38px;
+  box-sizing: border-box;
+  padding: 6px 10px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 700;
+  text-align: center;
+  color: #0f172a;
+  background-color: #ffffff;
+  outline: none;
+}
+
+.kit-selector-row input[type="number"]:focus {
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+}
+
+/* Botón + Agregar */
+.kit-selector-row .btn-primary {
+  height: 38px;
+  padding: 0 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 700;
+  border-radius: 6px;
+  white-space: nowrap;
+}
+
+/* Menú desplegable autocompletado */
 .kit-autocomplete-dropdown {
   position: absolute;
   top: calc(100% + 4px);
@@ -820,7 +876,7 @@
   background-color: #ffffff;
   border: 1px solid #cbd5e1;
   border-radius: 6px;
-  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
   max-height: 220px;
   overflow-y: auto;
   z-index: 1000;
