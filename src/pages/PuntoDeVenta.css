@@ -654,7 +654,7 @@
   cursor: not-allowed;
 }
 
-/* --- AUTOCOMPLETADO DE BÚSQUEDA FLOTANTE --- */
+/* --- AUTOCOMPLETADO EN FORMATO TABLA (PRODUCTO | PRECIO | STOCK) --- */
 .pos-search-wrapper {
   position: relative;
   flex: 1;
@@ -673,20 +673,40 @@
   background-color: #ffffff;
   border: 1px solid #cbd5e1;
   border-radius: 6px;
-  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
-  max-height: 280px;
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.15), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  max-height: 320px;
   overflow-y: auto;
-  z-index: 100;
+  z-index: 1000;
   margin: 0;
-  padding: 4px 0;
+  padding: 0;
   list-style: none;
 }
 
-.pos-autocomplete-item {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
+/* Fila de encabezados de la lista */
+.pos-autocomplete-header {
+  display: grid;
+  grid-template-columns: 1fr 140px 120px;
   padding: 8px 14px;
+  background-color: #f1f5f9;
+  border-bottom: 2px solid #e2e8f0;
+  font-size: 11px;
+  font-weight: 700;
+  color: #475569;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.pos-autocomplete-header span:nth-child(2),
+.pos-autocomplete-header span:nth-child(3) {
+  text-align: right;
+}
+
+/* Renglón de cada producto */
+.pos-autocomplete-item {
+  display: grid;
+  grid-template-columns: 1fr 140px 120px;
+  align-items: center;
+  padding: 10px 14px;
   cursor: pointer;
   border-bottom: 1px solid #f1f5f9;
   transition: background-color 0.1s ease;
@@ -701,21 +721,49 @@
   background-color: #e0f2fe;
 }
 
-.pos-autocomplete-info {
+/* Columna 1: Producto */
+.pos-autocomplete-col-info {
   display: flex;
   flex-direction: column;
   gap: 2px;
+  min-width: 0;
+  padding-right: 12px;
 }
 
 .pos-autocomplete-name {
   font-weight: 600;
   font-size: 13px;
   color: #0f172a;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .pos-autocomplete-sub {
   font-size: 11px;
   color: #64748b;
+}
+
+/* Columna 2: Precio */
+.pos-autocomplete-col-price {
+  font-weight: 700;
+  font-size: 14px;
+  color: #16a34a;
+  text-align: right;
+  padding-right: 12px;
+}
+
+/* Columna 3: Inventario */
+.pos-autocomplete-col-stock {
+  font-size: 13px;
+  font-weight: 600;
+  color: #334155;
+  text-align: right;
+}
+
+.pos-autocomplete-col-stock.stock-low {
+  color: #dc2626;
+  font-weight: 700;
 }
 
 .pos-autocomplete-price-stock {
@@ -1148,4 +1196,101 @@
   border: 1px solid #cbd5e1;
   border-radius: 4px;
   font-size: 12px;
+}
+/* --- NOTIFICACIÓN FLOTANTE DE STOCK MÍNIMO (TOAST) --- */
+.pos-stock-toast {
+  position: fixed;
+  top: 70px;
+  right: 20px;
+  background-color: #fffbeb;
+  border-left: 5px solid #f59e0b;
+  border-top: 1px solid #fef3c7;
+  border-right: 1px solid #fef3c7;
+  border-bottom: 1px solid #fef3c7;
+  border-radius: 8px;
+  box-shadow: 0 10px 25px -5px rgba(245, 158, 11, 0.25), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
+  padding: 12px 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  z-index: 9999;
+  max-width: 360px;
+  animation: slideInToast 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes slideInToast {
+  from {
+    transform: translateX(110%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+.toast-icon {
+  font-size: 22px;
+  line-height: 1;
+}
+
+.toast-content {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+}
+
+.toast-content strong {
+  font-size: 13px;
+  color: #92400e;
+}
+
+.toast-content span {
+  font-size: 12px;
+  color: #78350f;
+  line-height: 1.3;
+}
+
+.btn-close-toast {
+  background: none;
+  border: none;
+  color: #b45309;
+  font-size: 14px;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-weight: bold;
+}
+
+.btn-close-toast:hover {
+  background-color: #fde68a;
+}
+
+/* Indicador de stock en el visor derecho */
+.stock-viewer-badge {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 4px;
+  text-align: center;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.stock-viewer-badge.ok {
+  background-color: #dcfce7;
+  color: #166534;
+}
+
+.stock-viewer-badge.low {
+  background-color: #fef3c7;
+  color: #92400e;
+  border: 1px solid #fde68a;
+}
+
+.stock-viewer-badge.out {
+  background-color: #fee2e2;
+  color: #991b1b;
+  border: 1px solid #fca5a5;
 }

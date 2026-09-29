@@ -33,9 +33,7 @@ const estadoInicialForm = {
 
 const estadoInicialOpciones = {
     esServicio: false,
-    esKit: false,
-    aGranel: false,
-    noInventariado: false,
+    aGranel: false
 };
 
 export default function GestionProductos() {
@@ -193,29 +191,23 @@ export default function GestionProductos() {
         cargarProductos();
     }, []);
 
-    // Exclusión mutua estricta de opciones especiales[cite: 24]
     const handleOpcionChange = (key) => {
         setOpciones((prev) => {
             const estabaActiva = prev[key];
             const nuevoEstado = {
                 esServicio: false,
-                esKit: false,
                 aGranel: false,
-                noInventariado: false,
                 [key]: !estabaActiva
             };
 
-            if (nuevoEstado.esServicio || nuevoEstado.noInventariado) {
-                setDatosForm((f) => ({ ...f, invActual: '0', invMinimo: '0' }));
-            }
             if (nuevoEstado.esServicio) {
-                setDatosForm((f) => ({ ...f, claveUnidad: 'E48', locacion: '', imagenLocacion: '' }));
+                setDatosForm((f) => ({ ...f, invActual: '0', invMinimo: '0', claveUnidad: 'E48', locacion: '', imagenLocacion: '' }));
             } else if (estabaActiva && key === 'esServicio') {
                 setDatosForm((f) => ({ ...f, claveUnidad: 'PZA' }));
             }
 
-            if (nuevoEstado.aGranel && datosForm.claveUnidad === 'PZA') {
-                setDatosForm((f) => ({ ...f, claveUnidad: 'GRM' }));
+            if (nuevoEstado.aGranel && (datosForm.claveUnidad === 'PZA' || !datosForm.claveUnidad)) {
+                setDatosForm((f) => ({ ...f, claveUnidad: 'MTR' }));
             }
 
             return nuevoEstado;
@@ -231,15 +223,15 @@ export default function GestionProductos() {
 
     const agregarItemAlKit = () => {
         if (!productoSeleccionadoKit) {
-            return alert('⚠️ Busca y selecciona un producto del catálogo para añadirlo al kit.');
+            return alert('⚠️️ Busca y selecciona un producto del catálogo para añadirlo al kit.');
         }
-        const cant = parseInt(cantidadSeleccionadaKit, 10);
+        const cant = parseFloat(cantidadSeleccionadaKit);
         if (isNaN(cant) || cant <= 0) return alert('Ingresa una cantidad válida.');
 
         const existente = kitComponentes.find((item) => item.producto_id === productoSeleccionadoKit.id);
         if (existente) {
             setKitComponentes(kitComponentes.map((item) => 
-                item.producto_id === productoSeleccionadoKit.id ? { ...item, cantidad: item.cantidad + cant } : item
+                item.producto_id === productoSeleccionadoKit.id ? { ...item, cantidad: +(item.cantidad + cant).toFixed(3) } : item
             ));
         } else {
             setKitComponentes([
@@ -346,7 +338,7 @@ export default function GestionProductos() {
 
     const registrarNuevaCompra = async (e) => {
         e.preventDefault();
-        if (!datosNuevaCompra.proveedor.trim()) return alert('⚠️ Indica el proveedor o lugar de compra.');
+        if (!datosNuevaCompra.proveedor.trim()) return alert('⚠️️ Indica el proveedor o lugar de compra.');
         if (!datosNuevaCompra.costoUnitario) return alert('⚠️ Ingresa el costo unitario de la compra.');
 
         try {
@@ -452,9 +444,7 @@ export default function GestionProductos() {
 
         setOpciones({
             esServicio: Boolean(prod.esServicio),
-            esKit: Boolean(prod.esKit),
-            aGranel: Boolean(prod.aGranel),
-            noInventariado: Boolean(prod.noInventariado),
+            aGranel: Boolean(prod.aGranel)
         });
 
         setPestanaActiva('generales');
@@ -540,7 +530,15 @@ export default function GestionProductos() {
 
     const guardarProducto = async (e) => {
         e.preventDefault();
-        const payload = { ...datosForm, ...opciones };
+        const payload = {
+            ...datosForm,
+            ...opciones,
+            invActual: parseFloat(datosForm.invActual) || 0,
+            invMinimo: parseFloat(datosForm.invMinimo) || 0,
+            costo: parseFloat(datosForm.costo) || 0,
+            precioVenta: parseFloat(datosForm.precioVenta) || 0
+        };
+
         const esEdicion = Boolean(datosForm.id);
         const url = esEdicion ? `${API_URL}/api/productos/${datosForm.id}` : `${API_URL}/api/productos`;
         const method = esEdicion ? 'PUT' : 'POST';
@@ -622,11 +620,11 @@ export default function GestionProductos() {
     const indiceInicial = (paginaActual - 1) * itemsPorPagina;
     const productosPaginados = productosOrdenados.slice(indiceInicial, indiceInicial + itemsPorPagina);
 
-    const pzsPorPaquete = parseInt(datosForm.piezasPorPaquete) || 1;
-    const stockTotalPzs = parseInt(datosForm.invActual) || 0;
+    const pzsPorPaquete = parseFloat(datosForm.piezasPorPaquete) || 1;
+    const stockTotalPzs = parseFloat(datosForm.invActual) || 0;
     const paquetesCompletos = Math.floor(stockTotalPzs / pzsPorPaquete);
-    const piezasSueltas = stockTotalPzs % pzsPorPaquete;
-    const deshabilitaInventario = opciones.esServicio || opciones.noInventariado;
+    const piezasSueltas = +(stockTotalPzs % pzsPorPaquete).toFixed(2);
+    const deshabilitaInventario = opciones.esServicio;
 
     return (
         <div className="gp-container">
@@ -640,35 +638,59 @@ export default function GestionProductos() {
                          datosForm.id ? 'EDITAR PRODUCTO' : 'AGREGAR NUEVO PRODUCTO'}
                     </h2>
                 </div>
+
                 <div className="gp-header-actions">
-                    {vista === 'catalogo' ? (
+                    {vista !== 'formulario' ? (
                         <>
-                            <button className="btn-secondary" onClick={() => { setNuevoKitCodigo(generarCodigoKitAutomatico()); setVista('kits'); }}>
-                                📦 Paquetes y Kits
-                            </button>
-                            <button className="btn-secondary" onClick={() => setVista('promociones')}>
-                                🏷️ Promociones
-                            </button>
-                            <div className="column-menu-wrapper">
-                                <button className="btn-secondary" onClick={() => setMostrarMenuColumnas(!mostrarMenuColumnas)}>
-                                    ⚙️ Columnas
+                            {/* Pestañas de navegación idénticas a Historial y Reportes */}
+                            <div className="gp-tabs-nav">
+                                <button 
+                                    className={`gp-tab-nav-btn ${vista === 'catalogo' ? 'active' : ''}`}
+                                    onClick={() => setVista('catalogo')}
+                                >
+                                    📋 Catálogo ({productos.length})
                                 </button>
-                                {mostrarMenuColumnas && (
-                                    <div className="column-dropdown">
-                                        <h4>Mostrar/Ocultar</h4>
-                                        {Object.keys(columnasVisibles).map(key => (
-                                            <label key={key} className="checkbox-label">
-                                                <input type="checkbox" checked={columnasVisibles[key]} onChange={() => toggleColumna(key)} />
-                                                {key.charAt(0).toUpperCase() + key.slice(1)}
-                                            </label>
-                                        ))}
-                                    </div>
-                                )}
+                                <button 
+                                    className={`gp-tab-nav-btn ${vista === 'kits' ? 'active' : ''}`}
+                                    onClick={() => {
+                                        setNuevoKitCodigo(generarCodigoKitAutomatico());
+                                        setVista('kits');
+                                    }}
+                                >
+                                    📦 Paquetes y Kits ({kits.length})
+                                </button>
+                                <button 
+                                    className={`gp-tab-nav-btn ${vista === 'promociones' ? 'active' : ''}`}
+                                    onClick={() => setVista('promociones')}
+                                >
+                                    🏷️ Promociones ({promociones.length})
+                                </button>
                             </div>
-                            <button className="btn-secondary" onClick={() => fileInputRef.current.click()}>⬆️ Importar</button>
-                            <input type="file" ref={fileInputRef} style={{ display: 'none' }} accept=".csv" onChange={handleImportarVacio} />
-                            <button className="btn-secondary" onClick={handleExportarVacio}>⬇️ Exportar CSV</button>
-                            <button className="btn-primary" onClick={handleNuevoProducto}>+ Agregar Producto</button>
+
+                            {vista === 'catalogo' && (
+                                <>
+                                    <div className="column-menu-wrapper">
+                                        <button className="btn-secondary" onClick={() => setMostrarMenuColumnas(!mostrarMenuColumnas)}>
+                                            ⚙️ Columnas
+                                        </button>
+                                        {mostrarMenuColumnas && (
+                                            <div className="column-dropdown">
+                                                <h4>Mostrar/Ocultar</h4>
+                                                {Object.keys(columnasVisibles).map(key => (
+                                                    <label key={key} className="checkbox-label">
+                                                        <input type="checkbox" checked={columnasVisibles[key]} onChange={() => toggleColumna(key)} />
+                                                        {key.charAt(0).toUpperCase() + key.slice(1)}
+                                                    </label>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+                                    <button className="btn-secondary" onClick={() => fileInputRef.current.click()}>⬆️ Importar</button>
+                                    <input type="file" ref={fileInputRef} style={{ display: 'none' }} accept=".csv" onChange={handleImportarVacio} />
+                                    <button className="btn-secondary" onClick={handleExportarVacio}>⬇️ Exportar CSV</button>
+                                    <button className="btn-primary" onClick={handleNuevoProducto}>+ Agregar Producto</button>
+                                </>
+                            )}
                         </>
                     ) : (
                         <button className="btn-secondary" onClick={handleVolverAlCatalogo}>
@@ -771,7 +793,8 @@ export default function GestionProductos() {
                                 </div>
                                 <input 
                                     type="number" 
-                                    min="1" 
+                                    step="any"
+                                    min="0.1" 
                                     value={cantidadSeleccionadaKit} 
                                     onChange={(e) => setCantidadSeleccionadaKit(e.target.value)} 
                                     title="Cantidad de piezas en el kit"
@@ -966,16 +989,13 @@ export default function GestionProductos() {
                                 </thead>
                                 <tbody>
                                     {productosPaginados.map((prod) => {
-                                        const stock = parseInt(prod.invActual) || 0;
-                                        const min = parseInt(prod.invMinimo) || 0;
+                                        const stock = parseFloat(prod.invActual) || 0;
+                                        const min = parseFloat(prod.invMinimo) || 0;
                                         let badgeClass = 'badge-success'; let badgeText = 'Normal';
                                         
                                         if (prod.esServicio) {
                                             badgeClass = 'badge-warning';
                                             badgeText = 'Servicio';
-                                        } else if (prod.noInventariado) {
-                                            badgeClass = 'badge-warning';
-                                            badgeText = 'No Inv.';
                                         } else if (stock <= 0) { 
                                             badgeClass = 'badge-danger'; 
                                             badgeText = 'Agotado'; 
@@ -1016,7 +1036,7 @@ export default function GestionProductos() {
                                                 {columnasVisibles.precio && <td><strong>${parseFloat(prod.precioVenta || 0).toFixed(2)}</strong></td>}
                                                 {columnasVisibles.stock && (
                                                     <td>
-                                                        {prod.esServicio || prod.noInventariado ? '—' : `${prod.invActual || 0} pza(s)`}
+                                                        {prod.esServicio ? '—' : `${prod.invActual || 0} pza(s)`}
                                                     </td>
                                                 )}
                                                 {columnasVisibles.estado && <td><span className={`badge ${badgeClass}`}>{badgeText}</span></td>}
@@ -1142,8 +1162,9 @@ export default function GestionProductos() {
                                     <label>Pzs Compradas (Sumar a Stock):</label>
                                     <input 
                                         type="number" 
+                                        step="any"
                                         min="0" 
-                                        placeholder="Ej. 50" 
+                                        placeholder="Ej. 50 ó 12.5" 
                                         value={datosNuevaCompra.cantidadComprada} 
                                         onChange={(e) => setDatosNuevaCompra({ ...datosNuevaCompra, cantidadComprada: e.target.value })} 
                                     />
@@ -1256,7 +1277,7 @@ export default function GestionProductos() {
                             />
                         </label>
 
-                        {/* Opciones Especiales Excluyentes[cite: 24] */}
+                        {/* Opciones Especiales Excluyentes */}
                         <div className="gp-options-box">
                             <h4>Opciones Especiales:</h4>
                             <label className="checkbox-label">
@@ -1265,15 +1286,7 @@ export default function GestionProductos() {
                                     checked={opciones.esServicio} 
                                     onChange={() => handleOpcionChange('esServicio')} 
                                 />
-                                Este producto es servicio (sin stock)
-                            </label>
-                            <label className="checkbox-label">
-                                <input 
-                                    type="checkbox" 
-                                    checked={opciones.esKit} 
-                                    onChange={() => handleOpcionChange('esKit')} 
-                                />
-                                Este producto es un Kit (paquete escolar)
+                                Este producto es servicio (copias, impresiones, etc.)
                             </label>
                             <label className="checkbox-label">
                                 <input 
@@ -1281,15 +1294,7 @@ export default function GestionProductos() {
                                     checked={opciones.aGranel} 
                                     onChange={() => handleOpcionChange('aGranel')} 
                                 />
-                                Se vende a granel (permite decimales)
-                            </label>
-                            <label className="checkbox-label">
-                                <input 
-                                    type="checkbox" 
-                                    checked={opciones.noInventariado} 
-                                    onChange={() => handleOpcionChange('noInventariado')} 
-                                />
-                                Producto no inventariado (venta libre)
+                                Se vende a granel (listón, papel por metro, etc.)
                             </label>
                         </div>
                     </div>
@@ -1306,7 +1311,6 @@ export default function GestionProductos() {
                                     <div className="form-group full-width"><label>Cód. de Barras:</label><input type="text" name="codigoBarras" value={datosForm.codigoBarras} onChange={handleInputChange} required /></div>
                                     <div className="form-group full-width"><label>Nombre:</label><input type="text" name="nombre" value={datosForm.nombre} onChange={handleInputChange} required /></div>
                                     
-                                    {/* Si es servicio, se oculta por completo el campo de locación[cite: 24, 30] */}
                                     {!opciones.esServicio && (
                                         <div className="form-group full-width locacion-group">
                                             <label>Locación (Anaquel/Fila/Caja):</label>
@@ -1339,7 +1343,7 @@ export default function GestionProductos() {
                             ) : (
                                 <div className="gp-form-grid">
                                     {opciones.esServicio ? (
-                                        /* VISTA LIMPIA PARA SERVICIOS[cite: 24] */
+                                        /* 1. MODO SERVICIO */
                                         <>
                                             <div className="form-group full-width" style={{ background: '#eff6ff', padding: '10px 14px', borderRadius: '6px', color: '#1e40af', fontSize: '0.85rem' }}>
                                                 ℹ️ <strong>Modo Servicio:</strong> No requiere inventario, empaques ni locación física. Solo define el precio al público y el costo de tus insumos si aplica.
@@ -1348,7 +1352,7 @@ export default function GestionProductos() {
                                                 <label>Precio al Público ($):</label>
                                                 <input 
                                                     type="number" 
-                                                    step="0.10" 
+                                                    step="0.05" 
                                                     name="precioVenta" 
                                                     value={datosForm.precioVenta} 
                                                     onChange={handlePrecioChange} 
@@ -1388,15 +1392,72 @@ export default function GestionProductos() {
                                                 />
                                             </div>
                                         </>
+                                    ) : opciones.aGranel ? (
+                                        /* 2. MODO GRANEL / FRACCIÓN (METROS, ROLLOS, KILOS) */
+                                        <>
+                                            <div className="form-group full-width" style={{ background: '#ecfdf5', padding: '10px 14px', borderRadius: '6px', color: '#065f46', fontSize: '0.85rem' }}>
+                                                ⚖️ <strong>Modo Granel / Fracción:</strong> Ideal para papel por pliego o metro, forro, hule cristal y listones. Permite registrar rollos/cajas y cobrar decimales en caja.
+                                            </div>
+                                            <div className="form-group">
+                                                <label>Fecha de Entrada / Compra:</label>
+                                                <input type="date" name="fechaCompra" value={datosForm.fechaCompra} onChange={handleInputChange} />
+                                            </div>
+                                            <div className="form-group">
+                                                <label>Costo del Rollo o Caja Completa ($):</label>
+                                                <input type="number" step="0.01" name="costoPaquete" value={datosForm.costoPaquete} onChange={handlePrecioChange} placeholder="Ej. 150.00" />
+                                            </div>
+                                            <div className="form-group">
+                                                <label>Metros o Unidades que trae el Rollo/Caja:</label>
+                                                <input type="number" step="any" name="piezasPorPaquete" value={datosForm.piezasPorPaquete} onChange={handlePrecioChange} placeholder="Ej. 50" />
+                                            </div>
+                                            <div className="form-group">
+                                                <label>Costo por Metro / Fracción ($):</label>
+                                                <input type="number" step="0.01" name="costo" value={datosForm.costo} onChange={handlePrecioChange} placeholder="0.00" required />
+                                            </div>
+                                            <div className="form-group">
+                                                <label>Ganancia Deseada (%):</label>
+                                                <input type="number" step="0.1" name="ganancia" value={datosForm.ganancia} onChange={handlePrecioChange} />
+                                            </div>
+                                            <div className="form-group">
+                                                <label>Precio Venta al Público por Metro / Fracción ($):</label>
+                                                <input type="number" step="0.01" name="precioVenta" value={datosForm.precioVenta} onChange={handlePrecioChange} placeholder="0.00" required />
+                                            </div>
+                                            <div className="form-group">
+                                                <label>Existencia Actual (Metros/Kgs en Mostrador):</label>
+                                                <input 
+                                                    type="number" 
+                                                    step="any" 
+                                                    name="invActual" 
+                                                    value={datosForm.invActual} 
+                                                    onChange={handleInputChange} 
+                                                    placeholder="Ej. 25.5" 
+                                                />
+                                            </div>
+                                            <div className="form-group">
+                                                <label>Alerta Mínima de Stock (Metros/Kgs restantes):</label>
+                                                <input 
+                                                    type="number" 
+                                                    step="any" 
+                                                    name="invMinimo" 
+                                                    value={datosForm.invMinimo} 
+                                                    onChange={handleInputChange} 
+                                                    placeholder="Ej. 5" 
+                                                />
+                                            </div>
+                                            <div className="form-group">
+                                                <label>Puntos de Lealtad:</label>
+                                                <input type="number" name="puntosLealtad" value={datosForm.puntosLealtad} onChange={handleInputChange} placeholder="0" />
+                                            </div>
+                                        </>
                                     ) : (
-                                        /* VISTA COMPLETA PARA ARTÍCULOS FÍSICOS */
+                                        /* 3. MODO NORMAL (LIBRETAS, PLUMAS Y ARTÍCULOS POR PIEZA) */
                                         <>
                                             <div className="form-group">
                                                 <label>Fecha de Compra / Entrada:</label>
                                                 <input type="date" name="fechaCompra" value={datosForm.fechaCompra} onChange={handleInputChange} />
                                             </div>
                                             <div className="form-group"><label>Costo por Paquete ($):</label><input type="number" step="0.01" name="costoPaquete" value={datosForm.costoPaquete} onChange={handlePrecioChange} /></div>
-                                            <div className="form-group"><label>Pzs por Paquete:</label><input type="number" name="piezasPorPaquete" value={datosForm.piezasPorPaquete} onChange={handlePrecioChange} /></div>
+                                            <div className="form-group"><label>Pzs por Paquete:</label><input type="number" step="any" name="piezasPorPaquete" value={datosForm.piezasPorPaquete} onChange={handlePrecioChange} /></div>
                                             <div className="form-group"><label>Costo Unitario ($):</label><input type="number" step="0.01" name="costo" value={datosForm.costo} onChange={handlePrecioChange} /></div>
                                             <div className="form-group"><label>Ganancia Deseada (%):</label><input type="number" step="0.1" name="ganancia" value={datosForm.ganancia} onChange={handlePrecioChange} /></div>
                                             <div className="form-group"><label>Precio Venta Pza ($):</label><input type="number" step="0.01" name="precioVenta" value={datosForm.precioVenta} onChange={handlePrecioChange} /></div>
@@ -1406,16 +1467,12 @@ export default function GestionProductos() {
                                                 <label>Stock Inicial (Pzs totales):</label>
                                                 <input 
                                                     type="number" 
+                                                    step="1"
                                                     name="invActual" 
                                                     disabled={deshabilitaInventario} 
                                                     value={deshabilitaInventario ? '0' : datosForm.invActual} 
                                                     onChange={handleInputChange} 
                                                 />
-                                                {deshabilitaInventario && (
-                                                    <small style={{ color: '#0d6efd', fontStyle: 'italic' }}>
-                                                        Desactivado por ser producto no inventariado.
-                                                    </small>
-                                                )}
                                             </div>
 
                                             <div className="form-group">
@@ -1429,6 +1486,7 @@ export default function GestionProductos() {
                                                 <label>Inventario Mínimo (Pzs):</label>
                                                 <input 
                                                     type="number" 
+                                                    step="1" 
                                                     name="invMinimo" 
                                                     disabled={deshabilitaInventario} 
                                                     value={deshabilitaInventario ? '0' : datosForm.invMinimo} 

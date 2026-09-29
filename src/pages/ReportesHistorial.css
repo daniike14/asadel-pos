@@ -238,3 +238,111 @@
   background-color: #fee2e2;
   color: #dc2626;
 }
+
+/* --- ESTILOS DE LA PESTAÑA RESURTIDO / COMPRAS --- */
+.resurtido-print-container {
+  background-color: #ffffff;
+  padding: 10px;
+  border-radius: 6px;
+}
+
+.resurtido-proveedor-header {
+  background-color: #f1f5f9;
+  border-left: 4px solid #0284c7;
+  padding: 8px 14px;
+  font-weight: 700;
+  color: #0f172a;
+  margin-top: 14px;
+  margin-bottom: 6px;
+  border-radius: 0 4px 4px 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.check-col {
+  width: 40px;
+  text-align: center;
+}
+
+.check-box-print {
+  width: 16px;
+  height: 16px;
+  border: 1.5px solid #64748b;
+  border-radius: 3px;
+  display: inline-block;
+}
+
+@media print {
+  .resurtido-print-area,
+  .resurtido-print-area * {
+    visibility: visible;
+  }
+
+  .resurtido-print-area {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    padding: 0 !important;
+  }
+}
+
+/* Ajuste para inputs y selects dentro de los modales de reportes */
+.modal-content .field-group input,
+.modal-content .field-group select {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 8px 12px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  font-size: 13px;
+  color: #0f172a;
+  outline: none;
+  background-color: #ffffff;
+}
+
+.modal-content .field-group input:focus,
+.modal-content .field-group select:focus {
+  border-color: #2563eb;
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.15);
+}
+
+.modal-content .modal-body {
+  box-sizing: border-box;
+  width: 100%;
+}
+
+.input-cant-resurtido {
+  width: 65px;
+  padding: 5px 8px;
+  font-size: 13px;
+  font-weight: 700;
+  text-align: center;
+  border: 1.5px solid #93c5fd;
+  border-radius: 6px;
+  background-color: #ffffff;
+  color: #1d4ed8;
+  outline: none;
+  box-sizing: border-box;
+}
+
+.input-cant-resurtido:focus {
+  border-color: #2563eb;
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.2);
+}
+
+.print-cant-resurtido {
+  display: none;
+}
+
+@media print {
+  .input-cant-resurtido {
+    display: none !important;
+  }
+  .print-cant-resurtido {
+    display: inline-block !important;
+    font-weight: bold;
+    color: #0f172a;
+  }
+}

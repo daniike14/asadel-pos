@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import logoAsadel from '../assets/Logo.jpg';
+import logoPorDefecto from '../assets/Logo.jpg';
 import './PuntoDeVenta.css';
 import { API_URL } from '../config';
 
@@ -8,10 +8,10 @@ const formatoEmpaque = (totalPiezas, piezasPorCaja) => {
     return `${totalPiezas} pzs`;
   }
   const cajas = Math.floor(totalPiezas / piezasPorCaja);
-  const sueltas = totalPiezas % piezasPorCaja;
+  const sueltas = (totalPiezas % piezasPorCaja).toFixed(1);
 
   if (cajas === 0) return `${sueltas} pzs sueltas`;
-  if (sueltas === 0) return `${cajas} caja(s) (${totalPiezas} pzs tot.)`;
+  if (sueltas == 0) return `${cajas} caja(s) (${totalPiezas} pzs tot.)`;
   return `${cajas} caja(s) + ${sueltas} pzs (${totalPiezas} pzs tot.)`;
 };
 
@@ -52,10 +52,43 @@ export default function PuntoDeVenta() {
     porcentaje_max_descuento: 100
   });
 
+  // Datos dinámicos de la Empresa
+  const [datosEmpresa, setDatosEmpresa] = useState({
+    nombre: 'PAPELERÍA ASADEL',
+    sucursal: '',
+    direccion: '',
+    telefono: '',
+    mensaje_ticket: '¡Gracias por su compra y preferencia!',
+    logo: ''
+  });
+
   // Alta rápida de cliente
   const [mostrarAltaRapida, setMostrarAltaRapida] = useState(false);
   const [nuevoClienteNombre, setNuevoClienteNombre] = useState('');
   const [nuevoClienteTelefono, setNuevoClienteTelefono] = useState('');
+
+  // Estado para Artículo No Inventariado / Venta Rápida
+  const [datosArticuloRapido, setDatosArticuloRapido] = useState({
+    nombre: '',
+    precio: '',
+    cantidad: 1
+  });
+
+  // Alerta discreta de Stock Mínimo
+  const [alertaStock, setAlertaStock] = useState(null);
+  const timerAlertaRef = useRef(null);
+
+  const dispararAlertaStock = (nombre, restante, minimo) => {
+    if (timerAlertaRef.current) clearTimeout(timerAlertaRef.current);
+    setAlertaStock({
+      nombre,
+      restante: +restante.toFixed(2),
+      minimo: +minimo.toFixed(2)
+    });
+    timerAlertaRef.current = setTimeout(() => {
+      setAlertaStock(null);
+    }, 4500);
+  };
 
   useEffect(() => {
     localStorage.setItem('asadel_carrito_temporal', JSON.stringify(carrito));
@@ -63,11 +96,12 @@ export default function PuntoDeVenta() {
 
   const cargarDatosBD = async () => {
     try {
-      const [resProd, resPromo, resKits, resReglas] = await Promise.all([
+      const [resProd, resPromo, resKits, resReglas, resEmpresa] = await Promise.all([
         fetch(`${API_URL}/api/productos`),
         fetch(`${API_URL}/api/promociones`),
         fetch(`${API_URL}/api/kits`),
-        fetch(`${API_URL}/api/configuracion/lealtad`)
+        fetch(`${API_URL}/api/configuracion/lealtad`),
+        fetch(`${API_URL}/api/empresa`)
       ]);
 
       let itemsCombinados = [];
@@ -79,10 +113,14 @@ export default function PuntoDeVenta() {
           codigo: p.codigoBarras || '',
           precioUnitario: parseFloat(p.precioVenta) || 0,
           ubicacion: p.locacion || 'N/A',
-          stock: p.invActual || 0,
+          stock: parseFloat(p.invActual) || 0,
+          invMinimo: parseFloat(p.invMinimo) || 0,
           piezasPorCaja: p.piezasPorPaquete || 1,
           imagenLocacion: p.imagenLocacion || '',
           puntosLealtad: parseInt(p.puntosLealtad) || 0,
+          aGranel: Boolean(p.aGranel),
+          esServicio: Boolean(p.esServicio),
+          noInventariado: Boolean(p.noInventariado),
           esKit: false
         }));
         itemsCombinados = [...normalizados];
@@ -98,6 +136,7 @@ export default function PuntoDeVenta() {
           precioUnitario: parseFloat(k.precio) || 0,
           ubicacion: 'Área de Kits',
           stock: 999,
+          invMinimo: 0,
           piezasPorCaja: 1,
           imagenLocacion: '',
           puntosLealtad: 0,
@@ -127,6 +166,13 @@ export default function PuntoDeVenta() {
         const dataReglas = await resReglas.json();
         setReglasLealtad(dataReglas);
       }
+
+      if (resEmpresa.ok) {
+        const dataEmp = await resEmpresa.json();
+        if (dataEmp && dataEmp.nombre) {
+          setDatosEmpresa(dataEmp);
+        }
+      }
     } catch (error) {
       console.error('Error al conectar con la base de datos:', error);
     }
@@ -149,8 +195,6 @@ export default function PuntoDeVenta() {
   const [modalActivo, setModalActivo] = useState(null);
   const [movimientoMonto, setMovimientoMonto] = useState('');
   const [movimientoMotivo, setMovimientoMotivo] = useState('');
-  const [busquedaChecador, setBusquedaChecador] = useState('');
-  const [productoChecador, setProductoChecador] = useState(null);
 
   const [cotizacionCliente, setCotizacionCliente] = useState({
     nombre: '',
@@ -174,7 +218,7 @@ export default function PuntoDeVenta() {
 
   const inputBusquedaRef = useRef(null);
 
-  // Búsqueda en vivo de clientes
+  // Búsqueda en vivo de clientes[cite: 19]
   useEffect(() => {
     const q = busquedaCliente.trim();
     if (q.length >= 2 && !clienteActivo) {
@@ -191,7 +235,7 @@ export default function PuntoDeVenta() {
     }
   }, [busquedaCliente, clienteActivo]);
 
-  // Filtrado de sugerencias de productos
+  // Filtrado de sugerencias de productos[cite: 19]
   useEffect(() => {
     const termino = busqueda.trim().toLowerCase();
     if (termino.length >= 1) {
@@ -220,18 +264,20 @@ export default function PuntoDeVenta() {
     return () => document.removeEventListener('mousedown', clickAfuera);
   }, []);
 
-  // Totales de compra
+  // Totales de compra compatibles con decimales[cite: 19]
   const subtotalCarrito = carrito.reduce((acc, item) => {
-    const sub = item.precioUnitario * item.cantidad;
+    const cant = parseFloat(item.cantidad) || 0;
+    const sub = item.precioUnitario * cant;
     const conDescuento = sub * (1 - (item.descuento || 0) / 100);
     return acc + conDescuento;
   }, 0);
 
   const puntosGanadosCompra = carrito.reduce((acc, item) => {
-    return acc + (item.puntosLealtad || 0) * item.cantidad;
+    const cant = parseFloat(item.cantidad) || 0;
+    return acc + Math.floor((item.puntosLealtad || 0) * cant);
   }, 0);
 
-  // Cálculo dinámico de canje con reglas configuradas
+  // Cálculo dinámico de canje con reglas configuradas[cite: 19]
   const valorPunto = reglasLealtad.valor_punto_pesos || 1.0;
   const puntosDisponibles = clienteActivo ? (clienteActivo.puntos_acumulados || 0) : 0;
   const cumpleMinimoCanje = puntosDisponibles >= (reglasLealtad.minimo_puntos_canje || 0);
@@ -255,7 +301,7 @@ export default function PuntoDeVenta() {
   const cambio = totalRecibido >= totalPagar ? totalRecibido - totalPagar : 0;
   const restante = totalPagar > totalRecibido ? totalPagar - totalRecibido : 0;
 
-  // Manejo de Clientes en Cobro
+  // Manejo de Clientes en Cobro[cite: 19]
   const seleccionarClienteCobro = (c) => {
     setClienteActivo(c);
     setBusquedaCliente(`${c.nombre} (${c.telefono})`);
@@ -303,9 +349,40 @@ export default function PuntoDeVenta() {
     }
   };
 
-  const cerrarChecador = () => {
-    setBusquedaChecador('');
-    setProductoChecador(null);
+  const agregarArticuloRapido = (e) => {
+    e.preventDefault();
+    const precioNum = parseFloat(datosArticuloRapido.precio);
+    const cantNum = parseFloat(datosArticuloRapido.cantidad) || 1;
+
+    if (!datosArticuloRapido.nombre.trim()) {
+      return alert('Ingresa una descripción para el producto.');
+    }
+    if (isNaN(precioNum) || precioNum <= 0) {
+      return alert('Ingresa un precio válido mayor a 0.');
+    }
+
+    const itemComun = {
+      id: 0,
+      id_unico: `NO_INV_${Date.now()}_${Math.random()}`,
+      nombre: datosArticuloRapido.nombre.trim(),
+      codigo: 'S/C',
+      precioUnitario: precioNum,
+      cantidad: cantNum,
+      descuento: 0,
+      comentario: 'Venta rápida / Sin inventario',
+      ubicacion: 'Mostrador',
+      stock: 0,
+      invMinimo: 0,
+      piezasPorCaja: 1,
+      noInventariado: true,
+      esServicio: false,
+      aGranel: false,
+      esKit: false
+    };
+
+    setCarrito((prev) => [...prev, itemComun]);
+    setProductoSeleccionado(itemComun);
+    setDatosArticuloRapido({ nombre: '', precio: '', cantidad: 1 });
     setModalActivo(null);
   };
 
@@ -395,12 +472,39 @@ export default function PuntoDeVenta() {
     }
   };
 
-  const cambiarCantidadTabla = (idUnico, nuevaCantidad) => {
-    const cantNum = parseInt(nuevaCantidad, 10);
-    if (isNaN(cantNum) || cantNum <= 0) return;
-
+  // Cambio de cantidad validando stock disponible[cite: 19]
+  const cambiarCantidadTabla = (idUnico, nuevaCantidad, delta = 0) => {
     setCarrito((prev) =>
-      prev.map((item) => ((item.id_unico || item.id) === idUnico ? { ...item, cantidad: cantNum } : item))
+      prev.map((item) => {
+        if ((item.id_unico || item.id) !== idUnico) return item;
+
+        let cantCalculada;
+        const paso = (item.aGranel || item.esServicio) ? 0.5 : 1;
+
+        if (delta !== 0) {
+          const actual = parseFloat(item.cantidad) || 0;
+          cantCalculada = Math.max(paso, +(actual + delta * paso).toFixed(3));
+        } else {
+          cantCalculada = parseFloat(nuevaCantidad);
+          if (isNaN(cantCalculada) || cantCalculada <= 0) return item;
+        }
+
+        // Validación estricta de inventario si es producto físico inventariado
+        if (!item.esKit && !item.esServicio && !item.noInventariado) {
+          const stockMaximo = parseFloat(item.stock) || 0;
+          if (cantCalculada > stockMaximo) {
+            alert(`⚠️ Solo hay ${stockMaximo} pz(s) disponibles de "${item.nombre}". No se pueden vender más.`);
+            cantCalculada = stockMaximo;
+          }
+
+          const restante = stockMaximo - cantCalculada;
+          if (restante <= (item.invMinimo || 0)) {
+            dispararAlertaStock(item.nombre, restante, item.invMinimo || 0);
+          }
+        }
+
+        return { ...item, cantidad: cantCalculada };
+      })
     );
   };
 
@@ -428,11 +532,38 @@ export default function PuntoDeVenta() {
     );
   };
 
+  // Bloqueo estricto al agregar productos agotados o excedentes[cite: 19]
   const agregarAlCarrito = (producto, mantenerModalAbierto = false) => {
+    const esFisicoInventariado = !producto.esKit && !producto.esServicio && !producto.noInventariado;
+    const stockActual = parseFloat(producto.stock) || 0;
+
+    // 1. Bloqueo si el producto no tiene existencias
+    if (esFisicoInventariado && stockActual <= 0) {
+      alert(`⚠️ El producto "${producto.nombre}" está agotado (0 existencias en inventario).`);
+      return;
+    }
+
     const precioFinal = parseFloat(producto.precioUnitario) || 0;
     const descuentoFinal = parseFloat(producto.descuento) || 0;
     const comentarioFinal = (producto.comentario || '').trim();
-    const cantAgregar = parseInt(producto.cantidadAgregar || 1, 10);
+    const cantAgregar = parseFloat(producto.cantidadAgregar || 1);
+
+    // 2. Verificar existencias acumuladas en el carrito
+    const itemActualEnCarro = carrito.find(
+      (item) =>
+        item.id === producto.id &&
+        item.precioUnitario === precioFinal &&
+        item.descuento === descuentoFinal &&
+        (item.comentario || '').trim() === comentarioFinal
+    );
+
+    const cantidadPrevia = itemActualEnCarro ? parseFloat(itemActualEnCarro.cantidad) || 0 : 0;
+    const cantidadTotal = +(cantidadPrevia + cantAgregar).toFixed(3);
+
+    if (esFisicoInventariado && cantidadTotal > stockActual) {
+      alert(`⚠️ Solo hay ${stockActual} pz(s) de "${producto.nombre}" en anaquel. Ya tienes ${cantidadPrevia} en el carrito.`);
+      return;
+    }
 
     setCarrito((prevCarrito) => {
       const indiceExistente = prevCarrito.findIndex(
@@ -448,7 +579,7 @@ export default function PuntoDeVenta() {
       if (indiceExistente !== -1) {
         nuevoCarrito[indiceExistente] = {
           ...nuevoCarrito[indiceExistente],
-          cantidad: nuevoCarrito[indiceExistente].cantidad + cantAgregar
+          cantidad: cantidadTotal
         };
         setProductoSeleccionado(nuevoCarrito[indiceExistente]);
       } else {
@@ -460,10 +591,23 @@ export default function PuntoDeVenta() {
           comentario: comentarioFinal,
           cantidad: cantAgregar,
           puntosLealtad: producto.puntosLealtad || 0,
+          invMinimo: producto.invMinimo || 0,
+          aGranel: Boolean(producto.aGranel),
+          esServicio: Boolean(producto.esServicio),
           imagenLocacion: producto.imagenLocacion || ''
         };
         nuevoCarrito.push(nuevoItem);
         setProductoSeleccionado(nuevoItem);
+      }
+
+      // Alerta de stock mínimo si se está agotando en anaquel[cite: 19]
+      if (esFisicoInventariado) {
+        const minConfigurado = parseFloat(producto.invMinimo) || 0;
+        const restante = stockActual - cantidadTotal;
+
+        if (restante <= minConfigurado) {
+          dispararAlertaStock(producto.nombre, restante, minConfigurado);
+        }
       }
 
       return nuevoCarrito;
@@ -586,15 +730,6 @@ export default function PuntoDeVenta() {
     setModalActivo(null);
   };
 
-  const consultarChecador = (e) => {
-    e.preventDefault();
-    const termino = busquedaChecador.trim().toLowerCase();
-    const encontrado = catalogo.find(
-      (p) => p.codigo.toLowerCase() === termino || p.nombre.toLowerCase().includes(termino)
-    );
-    setProductoChecador(encontrado || 'NO_ENCONTRADO');
-  };
-
   const registrarMovimientoDinero = async (e) => {
     e.preventDefault();
     const tipo = modalActivo === 'entrada' ? 'entrada' : 'salida';
@@ -638,11 +773,24 @@ export default function PuntoDeVenta() {
       return;
     }
 
+    // Validación final antes de guardar venta: ningún producto debe exceder el stock
+    const productoExcedido = carrito.find(
+      (it) => !it.esServicio && !it.noInventariado && !it.esKit && it.id > 0 && it.cantidad > it.stock
+    );
+
+    if (productoExcedido) {
+      alert(
+        `⚠️ No se puede procesar la venta: "${productoExcedido.nombre}" excede las existencias. (Stock disponible: ${productoExcedido.stock}, solicitado: ${productoExcedido.cantidad}).`
+      );
+      return;
+    }
+
     const folioGenerado = `VTA-${Date.now().toString().slice(-6)}`;
     const fechaHoraVenta = `${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
 
     const payloadVenta = {
       folio: folioGenerado,
+      fecha_hora: new Date().toISOString(),
       total: totalPagar,
       metodo_pago: montoEfectivo && montoTarjeta ? 'mixto' : montoEfectivo ? 'efectivo' : 'tarjeta',
       monto_efectivo: efectivoNum,
@@ -690,7 +838,8 @@ export default function PuntoDeVenta() {
 
         setModalActivo('ticket');
       } else {
-        alert('Error al registrar la venta en el servidor.');
+        const errorData = await res.json();
+        alert(`Error al registrar la venta: ${errorData.error || 'Problema en el servidor'}`);
       }
     } catch {
       alert('Error al guardar la venta en la base de datos.');
@@ -724,8 +873,6 @@ export default function PuntoDeVenta() {
         setMostrarModalCobro(false);
         setMostrarModalBusqueda(false);
         setMostrarModalEditarItem(false);
-        setBusquedaChecador('');
-        setProductoChecador(null);
         setModalActivo(null);
         setImagenVisorFlotante(null); 
       }
@@ -739,6 +886,13 @@ export default function PuntoDeVenta() {
   const ubicacionTexto = productoFresco?.ubicacion || productoSeleccionado?.ubicacion || 'N/A';
   const fotoUbicacion = productoFresco?.imagenLocacion || productoSeleccionado?.imagenLocacion;
 
+  // Cálculo de stock restante en vivo para el visor
+  const stockBase = productoFresco?.stock ?? productoSeleccionado?.stock ?? 0;
+  const cantEnCarro = productoSeleccionado ? (carrito.find(it => (it.id_unico || it.id) === (productoSeleccionado.id_unico || productoSeleccionado.id))?.cantidad || 0) : 0;
+  const stockRemanente = +(stockBase - cantEnCarro).toFixed(2);
+  const minStock = productoFresco?.invMinimo ?? productoSeleccionado?.invMinimo ?? 0;
+  const esFisicoInventariado = productoSeleccionado && !productoSeleccionado.esKit && !productoSeleccionado.esServicio && !productoSeleccionado.noInventariado;
+
   const itemsNotaImpresion = ventaFinalizada ? ventaFinalizada.items : carrito;
   const folioNotaImpresion = ventaFinalizada ? ventaFinalizada.folio : `VTA-${Date.now().toString().slice(-6)}`;
   const fechaNotaImpresion = ventaFinalizada ? ventaFinalizada.fechaHora : `${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
@@ -746,9 +900,23 @@ export default function PuntoDeVenta() {
 
   return (
     <div className="pos-container">
+      {/* ALERTA DISCRETA TIPO TOAST DE STOCK MÍNIMO */}
+      {alertaStock && (
+        <div className="pos-stock-toast">
+          <div className="toast-icon">⚠️</div>
+          <div className="toast-content">
+            <strong>Stock bajo en mostrador</strong>
+            <span>
+              Quedan <strong>{alertaStock.restante} pz(s)</strong> de {alertaStock.nombre}. Surtir anaquel pronto.
+            </span>
+          </div>
+          <button className="btn-close-toast" onClick={() => setAlertaStock(null)}>✕</button>
+        </div>
+      )}
+
       <header className="pos-header">
         <div className="pos-branding">
-          <img src={logoAsadel} alt="Logo ASADEL" style={{ height: '30px' }} />
+          <img src={datosEmpresa.logo || logoPorDefecto} alt="Logo" style={{ height: '30px' }} />
           <h2>VENTAS</h2>
         </div>
         <div className="pos-user-info">
@@ -776,6 +944,12 @@ export default function PuntoDeVenta() {
 
           {mostrarSugerencias && sugerencias.length > 0 && (
             <ul className="pos-autocomplete-list">
+              <li className="pos-autocomplete-header">
+                <span>Producto</span>
+                <span>Precio</span>
+                <span>Inventario</span>
+              </li>
+
               {sugerencias.map((item, idx) => (
                 <li
                   key={item.id}
@@ -785,20 +959,22 @@ export default function PuntoDeVenta() {
                     seleccionarSugerencia(item);
                   }}
                 >
-                  <div className="pos-autocomplete-info">
+                  <div className="pos-autocomplete-col-info">
                     <span className="pos-autocomplete-name">
-                      {item.esKit && <span style={{ color: '#2563eb', marginRight: '4px' }}>📦</span>}
+                      {item.esKit && <span style={{ color: '#2563eb', marginRight: '4px' }}>📦 [Kit]</span>}
                       {item.nombre}
                     </span>
                     <span className="pos-autocomplete-sub">
                       Cód: {item.codigo || 'S/N'} | Loc: {item.ubicacion}
                     </span>
                   </div>
-                  <div className="pos-autocomplete-price-stock">
-                    <span className="pos-autocomplete-price">${item.precioUnitario.toFixed(2)}</span>
-                    <span className="pos-autocomplete-stock">
-                      {item.esKit ? 'Kit' : `Stock: ${item.stock}`}
-                    </span>
+
+                  <div className="pos-autocomplete-col-price">
+                    ${item.precioUnitario.toFixed(2)}
+                  </div>
+
+                  <div className={`pos-autocomplete-col-stock ${!item.esKit && item.stock <= (item.invMinimo || 5) ? 'stock-low' : ''}`}>
+                    {item.esKit ? 'Paquete' : `${item.stock} pz(s)`}
                   </div>
                 </li>
               ))}
@@ -825,7 +1001,9 @@ export default function PuntoDeVenta() {
                 {carrito.map((item) => {
                   const keyItem = item.id_unico || item.id;
                   const isSelected = (productoSeleccionado?.id_unico || productoSeleccionado?.id) === keyItem;
-                  const totalFila = (item.precioUnitario * item.cantidad) * (1 - (item.descuento || 0) / 100);
+                  const cantNum = parseFloat(item.cantidad) || 0;
+                  const totalFila = (item.precioUnitario * cantNum) * (1 - (item.descuento || 0) / 100);
+                  const admiteDecimal = item.aGranel || item.esServicio;
 
                   return (
                     <tr
@@ -833,7 +1011,6 @@ export default function PuntoDeVenta() {
                       className={isSelected ? 'selected-row' : ''}
                       onClick={() => setProductoSeleccionado(item)}
                     >
-                      {/* Celda aislada: los clics o dobles clics no disparan el modal */}
                       <td onClick={(e) => e.stopPropagation()} onDoubleClick={(e) => e.stopPropagation()}>
                         <div className="qty-controls-table" onDoubleClick={(e) => e.stopPropagation()}>
                           <button 
@@ -841,26 +1018,27 @@ export default function PuntoDeVenta() {
                             className="btn-qty-mini" 
                             onClick={(e) => { 
                               e.stopPropagation(); 
-                              cambiarCantidadTabla(keyItem, item.cantidad - 1); 
+                              cambiarCantidadTabla(keyItem, null, -1); 
                             }}
                           >
                             -
                           </button>
                           <input 
                             type="number" 
+                            step={admiteDecimal ? "any" : "1"}
                             className="input-qty-table" 
                             value={item.cantidad} 
                             onClick={(e) => e.stopPropagation()} 
                             onDoubleClick={(e) => e.stopPropagation()}
                             onChange={(e) => cambiarCantidadTabla(keyItem, e.target.value)} 
-                            min="1" 
+                            min={admiteDecimal ? "0.01" : "1"}
                           />
                           <button 
                             type="button" 
                             className="btn-qty-mini" 
                             onClick={(e) => { 
                               e.stopPropagation(); 
-                              cambiarCantidadTabla(keyItem, item.cantidad + 1); 
+                              cambiarCantidadTabla(keyItem, null, 1); 
                             }}
                           >
                             +
@@ -868,11 +1046,11 @@ export default function PuntoDeVenta() {
                         </div>
                       </td>
 
-                      {/* Las demás celdas conservan la función de doble clic para editar */}
                       <td onDoubleClick={() => abrirModalEditarItem(item)} title="Doble clic para editar precio, promoción o notas">
                         <div className="product-table-name">
                           {item.esKit && <strong style={{ color: '#2563eb' }}>[PAQUETE] </strong>}
                           {item.nombre}
+                          {item.aGranel && <small style={{ color: '#16a34a', marginLeft: '6px' }}>⚖️️ [Granel]</small>}
                         </div>
                         {item.promocionNombre && <span className="product-table-promo">🏷️ {item.promocionNombre}</span>}
                         {item.comentario && <span className="product-table-comment">📝 {item.comentario}</span>}
@@ -898,7 +1076,13 @@ export default function PuntoDeVenta() {
           <div className="pos-quick-actions">
             <button className="btn-secondary" onClick={() => setModalActivo('entrada')}>Entrada Dinero</button>
             <button className="btn-secondary" onClick={() => setModalActivo('salida')}>Salida Dinero</button>
-            <button className="btn-secondary" onClick={() => { setBusquedaChecador(''); setProductoChecador(null); setModalActivo('checador'); }}>Checador Precios</button>
+            <button 
+              className="btn-secondary" 
+              style={{ backgroundColor: '#0284c7', color: '#ffffff' }} 
+              onClick={() => setModalActivo('rapido')}
+            >
+              ⚡ Art. No Inventariado
+            </button>
             <button className="btn-secondary" onClick={iniciarCotizacion}>Cotización</button>
             <button className="btn-secondary" onClick={() => setModalActivo('espera')}>Venta en Espera {ventasEnEspera.length > 0 && `(${ventasEnEspera.length})`}</button>
             <button className="btn-secondary" onClick={abrirCerrarTurno}>Cerrar Turno</button>
@@ -922,6 +1106,17 @@ export default function PuntoDeVenta() {
               )}
             </div>
 
+            {/* Distintivo de inventario restante en visor */}
+            {esFisicoInventariado && (
+              <div className={`stock-viewer-badge ${stockRemanente <= 0 ? 'out' : stockRemanente <= minStock ? 'low' : 'ok'}`}>
+                {stockRemanente <= 0 
+                  ? '⚠️ Sin existencias en mostrador' 
+                  : stockRemanente <= minStock 
+                  ? `⚠️️ Quedan solo ${stockRemanente} pz(s)` 
+                  : `Stock disponible: ${stockRemanente} pz(s)`}
+              </div>
+            )}
+
             <button className="btn-danger-outline" onClick={eliminarSeleccionado} disabled={!productoSeleccionado}>
               [Eliminar Selecc.] (Supr)
             </button>
@@ -939,10 +1134,70 @@ export default function PuntoDeVenta() {
               COBRAR (F12) 
             </button>
             <button className="btn-main btn-hold" onClick={guardarVentaEnEspera} disabled={carrito.length === 0}> TICKET PEND. </button>
-            <button className="btn-main btn-print" onClick={abrirNotaImpresion} disabled={carrito.length === 0 && !ventaFinalizada}> IMPRIMIR </button>
           </div>
         </div>
       </div>
+
+      {/* MODAL ARTÍCULO NO INVENTARIADO / VENTA RÁPIDA */}
+      {modalActivo === 'rapido' && (
+        <div className="modal-overlay">
+          <div className="modal-content" style={{ width: '420px' }}>
+            <div className="modal-header">
+              <h2>⚡ ARTÍCULO NO INVENTARIADO</h2>
+              <button className="btn-close-modal" onClick={() => setModalActivo(null)}>✕</button>
+            </div>
+            <form onSubmit={agregarArticuloRapido} className="modal-body">
+              <p style={{ margin: 0, fontSize: '13px', color: '#64748b' }}>
+                Agrega cobros imprevistos (cajas de cartón, mercancía varia o ventas abiertas) directamente a esta venta sin registrar en el catálogo.
+              </p>
+
+              <div className="field-group" style={{ marginTop: '10px' }}>
+                <label>Descripción / Nombre del artículo:</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="Ej. Caja de cartón, bolsa de regalo..."
+                  value={datosArticuloRapido.nombre}
+                  onChange={(e) => setDatosArticuloRapido({ ...datosArticuloRapido, nombre: e.target.value })}
+                  autoFocus
+                />
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                <div className="field-group">
+                  <label>Precio Unitario ($):</label>
+                  <input
+                    type="number"
+                    step="any"
+                    min="0.01"
+                    required
+                    placeholder="0.00"
+                    value={datosArticuloRapido.precio}
+                    onChange={(e) => setDatosArticuloRapido({ ...datosArticuloRapido, precio: e.target.value })}
+                  />
+                </div>
+
+                <div className="field-group">
+                  <label>Cantidad:</label>
+                  <input
+                    type="number"
+                    step="any"
+                    min="0.01"
+                    required
+                    value={datosArticuloRapido.cantidad}
+                    onChange={(e) => setDatosArticuloRapido({ ...datosArticuloRapido, cantidad: e.target.value })}
+                  />
+                </div>
+              </div>
+
+              <div className="modal-footer" style={{ marginTop: '10px' }}>
+                <button type="button" className="btn-cancel-modal" onClick={() => setModalActivo(null)}>Cancelar</button>
+                <button type="submit" className="btn-confirm-modal">+ Agregar a la Venta</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* MODAL DE COBRO (F12) CON CANJE DINÁMICO */}
       {mostrarModalCobro && (
@@ -1009,7 +1264,6 @@ export default function PuntoDeVenta() {
                       )}
                     </div>
                   ) : (
-                    /* FORMULARIO DE ALTA RÁPIDA DE CLIENTE */
                     <div className="fast-register-box">
                       <div className="fast-register-row">
                         <input 
@@ -1033,7 +1287,6 @@ export default function PuntoDeVenta() {
                     </div>
                   )
                 ) : (
-                  /* CLIENTE ASIGNADO */
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                     <div className="customer-active-badge">
                       <div>
@@ -1045,7 +1298,6 @@ export default function PuntoDeVenta() {
                       </span>
                     </div>
 
-                    {/* OPCIÓN DE CANJE DE PUNTOS DINÁMICA */}
                     {puntosDisponibles > 0 && (
                       cumpleMinimoCanje ? (
                         <div className="redemption-box">
@@ -1107,7 +1359,7 @@ export default function PuntoDeVenta() {
         </div>
       )}
 
-      {/* MODAL DE NOTA DE VENTA TAMAÑO CARTA */}
+      {/* MODAL DE NOTA DE VENTA TAMAÑO CARTA CON DATOS DINÁMICOS */}
       {modalActivo === 'ticket' && (
         <div className="modal-overlay">
           <div className="modal-content modal-cotizacion-content">
@@ -1120,9 +1372,17 @@ export default function PuntoDeVenta() {
               <div className="nota-carta-container">
                 <div className="nota-carta-header">
                   <div className="nota-carta-empresa">
-                    <h2>PAPELERÍA ASADEL</h2>
-                    <p>Artículos de Papelería, Oficina, Copias e Impresiones</p>
-                    <p>Atención y servicio de calidad</p>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                      {datosEmpresa.logo && (
+                        <img src={datosEmpresa.logo} alt="Logo" style={{ maxHeight: '38px', maxWidth: '90px', objectFit: 'contain' }} />
+                      )}
+                      <div>
+                        <h2>{datosEmpresa.nombre || 'PAPELERÍA ASADEL'}</h2>
+                        {datosEmpresa.sucursal && <p style={{ fontWeight: 'bold' }}>{datosEmpresa.sucursal}</p>}
+                      </div>
+                    </div>
+                    {datosEmpresa.direccion && <p>{datosEmpresa.direccion}</p>}
+                    {datosEmpresa.telefono && <p>Tel / WhatsApp: <strong>{datosEmpresa.telefono}</strong></p>}
                   </div>
                   <div className="nota-carta-datos-folio">
                     <strong>NOTA DE VENTA</strong><br />
@@ -1148,10 +1408,11 @@ export default function PuntoDeVenta() {
                   <tbody>
                     {itemsNotaImpresion.map((item) => {
                       const key = item.id_unico || item.id;
-                      const sub = (item.precioUnitario * item.cantidad) * (1 - (item.descuento || 0) / 100);
+                      const cantItem = parseFloat(item.cantidad) || 0;
+                      const sub = (item.precioUnitario * cantItem) * (1 - (item.descuento || 0) / 100);
                       return (
                         <tr key={key}>
-                          <td style={{ textAlign: 'center', fontWeight: 'bold' }}>{item.cantidad}</td>
+                          <td style={{ textAlign: 'center', fontWeight: 'bold' }}>{cantItem}</td>
                           <td>
                             <strong>{item.nombre}</strong>
                             {item.comentario && (
@@ -1174,7 +1435,7 @@ export default function PuntoDeVenta() {
                     <tbody>
                       <tr>
                         <td>Total Artículos:</td>
-                        <td>{itemsNotaImpresion.reduce((acc, it) => acc + (it.cantidad || 0), 0)} pzs</td>
+                        <td>{itemsNotaImpresion.reduce((acc, it) => acc + (parseFloat(it.cantidad) || 0), 0)}</td>
                       </tr>
                       {ventaFinalizada && ventaFinalizada.descuentoPuntosPesos > 0 && (
                         <tr>
@@ -1215,7 +1476,9 @@ export default function PuntoDeVenta() {
                 )}
 
                 <div className="nota-carta-footer">
-                  <p style={{ margin: '0 0 4px 0', fontWeight: '600' }}>¡Gracias por su compra y preferencia!</p>
+                  <p style={{ margin: '0 0 4px 0', fontWeight: '600' }}>
+                    {datosEmpresa.mensaje_ticket || '¡Gracias por su compra y preferencia!'}
+                  </p>
                   <p style={{ margin: 0 }}>Cualquier aclaración favor de presentar esta nota de remisión.</p>
                 </div>
               </div>
@@ -1241,7 +1504,7 @@ export default function PuntoDeVenta() {
             <div className="modal-body corte-print-container">
               <div className="nota-carta-header">
                 <div className="nota-carta-empresa">
-                  <h2>PAPELERÍA ASADEL</h2>
+                  <h2>{datosEmpresa.nombre || 'PAPELERÍA ASADEL'}</h2>
                   <p>Reporte de Arqueo y Cierre de Turno</p>
                 </div>
                 <div className="nota-carta-datos-folio">
@@ -1378,8 +1641,15 @@ export default function PuntoDeVenta() {
               <div className="cotizacion-print-area">
                 <div className="cotizacion-print-header">
                   <div>
-                    <h3 style={{ margin: 0 }}>PAPELERÍA ASADEL</h3>
-                    <p style={{ margin: '2px 0', fontSize: '12px', color: '#64748b' }}>Cotización de Artículos y Material Escolar</p>
+                    <h3 style={{ margin: 0 }}>{datosEmpresa.nombre || 'PAPELERÍA ASADEL'}</h3>
+                    {datosEmpresa.telefono && (
+                      <p style={{ margin: '2px 0', fontSize: '12px', color: '#64748b' }}>
+                        Contacto: {datosEmpresa.telefono}
+                      </p>
+                    )}
+                    <p style={{ margin: '2px 0', fontSize: '12px', color: '#64748b' }}>
+                      Cotización de Artículos y Material Escolar
+                    </p>
                   </div>
                   <div style={{ textAlign: 'right', fontSize: '12px' }}>
                     <strong>Folio:</strong> {cotizacionCliente.folio}<br />
@@ -1407,10 +1677,11 @@ export default function PuntoDeVenta() {
                   <tbody>
                     {carrito.map((item) => {
                       const key = item.id_unico || item.id;
-                      const sub = (item.precioUnitario * item.cantidad) * (1 - (item.descuento || 0) / 100);
+                      const cantItem = parseFloat(item.cantidad) || 0;
+                      const sub = (item.precioUnitario * cantItem) * (1 - (item.descuento || 0) / 100);
                       return (
                         <tr key={key}>
-                          <td style={{ textAlign: 'center' }}>{item.cantidad}</td>
+                          <td style={{ textAlign: 'center' }}>{cantItem}</td>
                           <td>
                             <strong>{item.nombre}</strong>
                             {item.comentario && <span style={{ display: 'block', fontSize: '11px', color: '#64748b' }}>{item.comentario}</span>}
@@ -1453,7 +1724,13 @@ export default function PuntoDeVenta() {
             <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
               <div className="input-group-inline">
                 <label>Cantidad:</label>
-                <input type="number" min="1" value={itemEditando.cantidad} onChange={(e) => setItemEditando({ ...itemEditando, cantidad: parseInt(e.target.value, 10) || 1 })} />
+                <input 
+                  type="number" 
+                  step={(itemEditando.aGranel || itemEditando.esServicio) ? "any" : "1"}
+                  min="0.01" 
+                  value={itemEditando.cantidad} 
+                  onChange={(e) => setItemEditando({ ...itemEditando, cantidad: parseFloat(e.target.value) || 1 })} 
+                />
               </div>
               <div className="input-group-inline">
                 <label>Precio Unitario ($):</label>
@@ -1538,7 +1815,13 @@ export default function PuntoDeVenta() {
                       <div className="actions-modal-group">
                         <div className="modal-qty-selector">
                           <label>Cant:</label>
-                          <input type="number" min="1" value={prod.cantidadAgregar || 1} onChange={(e) => manejarCambioResultado(prod.id, 'cantidadAgregar', e.target.value)} />
+                          <input 
+                            type="number" 
+                            step={(prod.aGranel || prod.esServicio) ? "any" : "1"}
+                            min="0.01" 
+                            value={prod.cantidadAgregar || 1} 
+                            onChange={(e) => manejarCambioResultado(prod.id, 'cantidadAgregar', e.target.value)} 
+                          />
                         </div>
                         <button className="btn-add-item-modal" onClick={() => agregarAlCarrito(prod, true)}>+ Agregar</button>
                       </div>
@@ -1614,36 +1897,6 @@ export default function PuntoDeVenta() {
                 <button type="submit" className="btn-confirm-modal">Registrar Movimiento</button>
               </div>
             </form>
-          </div>
-        </div>
-      )}
-
-      {/* CHECADOR DE PRECIOS */}
-      {modalActivo === 'checador' && (
-        <div className="modal-overlay">
-          <div className="modal-content">
-            <div className="modal-header">
-              <h2>CHECADOR DE PRECIOS E INVENTARIO</h2>
-              <button className="btn-close-modal" onClick={cerrarChecador}>✕</button>
-            </div>
-            <div className="modal-body">
-              <form onSubmit={consultarChecador} className="search-bar-inline">
-                <input type="text" value={busquedaChecador} onChange={(e) => setBusquedaChecador(e.target.value)} placeholder="Escanea o escribe el producto..." autoFocus />
-                <button type="submit" className="btn-confirm-modal">Consultar</button>
-              </form>
-              {productoChecador && productoChecador !== 'NO_ENCONTRADO' && (
-                <div className="checador-result-box">
-                  <h3>{productoChecador.nombre}</h3>
-                  <h1 className="checador-price">${productoChecador.precioUnitario.toFixed(2)} MXN</h1>
-                  <div className="checador-details-grid">
-                    <p>📍 Ubicación: <strong>{productoChecador.ubicacion}</strong></p>
-                    <p>🏷️ Código: <strong>{productoChecador.codigo}</strong></p>
-                    <p className={`stock-tag ${productoChecador.stock <= 5 ? 'stock-low' : 'stock-ok'}`}>📦 Stock disponible: <strong>{formatoEmpaque(productoChecador.stock, productoChecador.piezasPorCaja)}</strong></p>
-                  </div>
-                </div>
-              )}
-              {productoChecador === 'NO_ENCONTRADO' && (<div className="checador-result-box error">❌ Producto no encontrado.</div>)}
-            </div>
           </div>
         </div>
       )}

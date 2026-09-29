@@ -83,7 +83,9 @@ export default function Dashboard({ cambiarModulo }) {
           </div>
           <div className="dash-stat-card">
             <span>Devoluciones</span>
-            <h3 style={{ color: '#94a3b8' }}>{resumen.devoluciones}</h3>
+            <h3 style={{ color: resumen.devoluciones > 0 ? '#dc2626' : '#94a3b8' }}>
+              {resumen.devoluciones}
+            </h3>
           </div>
         </div>
       </div>
@@ -105,8 +107,8 @@ export default function Dashboard({ cambiarModulo }) {
               💵 [ CORTE DE CAJA ]
             </button>
             <button className="dash-btn-quick" onClick={() => cambiarModulo('reportes')}>
-  💵 [ CORTE DE CAJA / HISTORIAL ]
-</button>
+              💵 [ CORTE DE CAJA / HISTORIAL ]
+            </button>
           </div>
         </div>
 

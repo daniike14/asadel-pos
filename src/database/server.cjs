@@ -49,7 +49,7 @@ db.serialize(() => {
     ganancia REAL DEFAULT 0,
     
     invMinimo INTEGER DEFAULT 0,
-    invActual INTEGER DEFAULT 0,
+    invActual REAL DEFAULT 0,
     puntosLealtad INTEGER DEFAULT 0,
     
     esServicio BOOLEAN DEFAULT 0,
@@ -71,10 +71,24 @@ db.serialize(() => {
       costo_paquete REAL DEFAULT 0,
       piezas_por_paquete INTEGER DEFAULT 1,
       costo_unitario REAL NOT NULL,
-      cantidad_comprada INTEGER DEFAULT 0,
+      cantidad_comprada REAL DEFAULT 0,
       nota TEXT,
       fecha_compra DATETIME DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY(producto_id) REFERENCES productos(id)
+    )
+  `);
+
+  // TABLA DE ENCARGOS Y COMPRAS MANUALES / NOVEDADES
+  db.run(`
+    CREATE TABLE IF NOT EXISTS compras_manuales (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      nombre TEXT NOT NULL,
+      cantidad REAL DEFAULT 1,
+      proveedor_id INTEGER,
+      proveedor_nombre TEXT,
+      costo_estimado REAL DEFAULT 0,
+      nota TEXT,
+      fecha_registro DATETIME DEFAULT CURRENT_TIMESTAMP
     )
   `);
 
@@ -109,20 +123,22 @@ db.serialize(() => {
       cajero TEXT NOT NULL,
       cliente_id INTEGER,
       puntos_ganados INTEGER DEFAULT 0,
-      puntos_canjeados INTEGER DEFAULT 0
+      puntos_canjeados INTEGER DEFAULT 0,
+      estado TEXT DEFAULT 'completada'
     )
   `);
 
   db.run(`ALTER TABLE ventas ADD COLUMN cliente_id INTEGER`, () => {});
   db.run(`ALTER TABLE ventas ADD COLUMN puntos_ganados INTEGER DEFAULT 0`, () => {});
   db.run(`ALTER TABLE ventas ADD COLUMN puntos_canjeados INTEGER DEFAULT 0`, () => {});
+  db.run(`ALTER TABLE ventas ADD COLUMN estado TEXT DEFAULT 'completada'`, () => {});
 
   db.run(`
     CREATE TABLE IF NOT EXISTS detalle_ventas (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       venta_id INTEGER NOT NULL,
       producto_id INTEGER NOT NULL,
-      cantidad INTEGER NOT NULL,
+      cantidad REAL NOT NULL,
       precio_aplicado REAL NOT NULL,
       descuento_porcentaje REAL DEFAULT 0,
       comentario TEXT,
@@ -175,7 +191,7 @@ db.serialize(() => {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       kit_id INTEGER,
       producto_id INTEGER,
-      cantidad INTEGER,
+      cantidad REAL,
       FOREIGN KEY(kit_id) REFERENCES kits(id),
       FOREIGN KEY(producto_id) REFERENCES productos(id)
     )
@@ -244,7 +260,7 @@ db.serialize(() => {
       usuario TEXT UNIQUE NOT NULL,
       nombre TEXT NOT NULL,
       password TEXT NOT NULL,
-      rol TEXT NOT NULL DEFAULT 'cajero', -- 'admin' o 'cajero'
+      rol TEXT NOT NULL DEFAULT 'cajero',
       activo BOOLEAN DEFAULT 1,
       fecha_creacion DATETIME DEFAULT CURRENT_TIMESTAMP
     )
@@ -269,9 +285,9 @@ db.serialize(() => {
     db.get('SELECT COUNT(*) as count FROM configuracion_lealtad', (err, row) => {
       if (row && row.count === 0) {
         const stmt = db.prepare('INSERT INTO configuracion_lealtad (clave, valor) VALUES (?, ?)');
-        stmt.run('valor_punto_pesos', '1.0');       // 1 punto = $1.00 MXN por defecto
-        stmt.run('minimo_puntos_canje', '0');       // Mínimo para canjear
-        stmt.run('porcentaje_max_descuento', '100'); // Máximo 100% de la venta con puntos
+        stmt.run('valor_punto_pesos', '1.0');
+        stmt.run('minimo_puntos_canje', '0');
+        stmt.run('porcentaje_max_descuento', '100');
         stmt.finalize();
       }
     });
@@ -287,7 +303,7 @@ db.serialize(() => {
     db.get('SELECT COUNT(*) as count FROM configuracion_respaldos', (err, row) => {
       if (row && row.count === 0) {
         const stmt = db.prepare('INSERT INTO configuracion_respaldos (clave, valor) VALUES (?, ?)');
-        stmt.run('frecuencia_respaldo', 'diario'); // 'diario', '12h', 'semanal', 'desactivado'
+        stmt.run('frecuencia_respaldo', 'diario');
         stmt.run('ultimo_respaldo', new Date().toISOString());
         stmt.finalize();
       }
@@ -351,7 +367,6 @@ const ejecutarRespaldoEnDisco = () => {
   }
 };
 
-// Revisa periódicamente si corresponde ejecutar un respaldo
 setInterval(() => {
   db.all('SELECT * FROM configuracion_respaldos', [], (err, rows) => {
     if (err || !rows) return;
@@ -429,7 +444,7 @@ app.post('/api/productos', (req, res) => {
     costoPaquete || 0, piezasPorPaquete || 1, precioVentaPaquete || 0, notaPaquete || '',
     costo || 0, precioVenta || 0, ganancia || 0,
     esServicio || noInventariado ? 0 : (invMinimo || 0),
-    esServicio || noInventariado ? 0 : (invActual || 0),
+    esServicio || noInventariado ? 0 : (parseFloat(invActual) || 0),
     puntosLealtad || 0,
     esServicio ? 1 : 0, esKit ? 1 : 0, aGranel ? 1 : 0, noInventariado ? 1 : 0,
     fechaCompraFinal
@@ -453,7 +468,7 @@ app.post('/api/productos', (req, res) => {
           parseFloat(costoPaquete) || 0,
           parseInt(piezasPorPaquete) || 1,
           parseFloat(costo) || 0,
-          esServicio || noInventariado ? 0 : (parseInt(invActual) || 0),
+          esServicio || noInventariado ? 0 : (parseFloat(invActual) || 0),
           'Costo inicial registrado al crear el producto',
           fechaCompraFinal
         ]
@@ -499,7 +514,7 @@ app.put('/api/productos/:id', (req, res) => {
     costoPaquete || 0, piezasPorPaquete || 1, precioVentaPaquete || 0, notaPaquete || '',
     costo || 0, precioVenta || 0, ganancia || 0,
     esServicio || noInventariado ? 0 : (invMinimo || 0),
-    esServicio || noInventariado ? 0 : (invActual || 0),
+    esServicio || noInventariado ? 0 : (parseFloat(invActual) || 0),
     puntosLealtad || 0,
     esServicio ? 1 : 0, esKit ? 1 : 0, aGranel ? 1 : 0, noInventariado ? 1 : 0,
     fechaCompra || new Date().toISOString().split('T')[0],
@@ -558,7 +573,7 @@ app.post('/api/productos/:id/registrar-compra', (req, res) => {
     return res.status(400).json({ error: 'Faltan datos obligatorios de la compra.' });
   }
 
-  const cantCompradaNum = parseInt(cantidadComprada) || 0;
+  const cantCompradaNum = parseFloat(cantidadComprada) || 0;
   const costoUniNum = parseFloat(costoUnitario) || 0;
   const costoPaqNum = parseFloat(costoPaquete) || 0;
   const pzsPaqNum = parseInt(piezasPorPaquete) || 1;
@@ -659,6 +674,7 @@ app.get('/api/corte-caja/balance-actual', (req, res) => {
       COALESCE(SUM(total), 0) as totalVentas,
       COUNT(*) as ticketsTotal
     FROM ventas
+    WHERE estado != 'cancelada'
   `;
 
   const sqlMovs = `
@@ -736,7 +752,7 @@ app.post('/api/corte-caja', (req, res) => {
   );
 });
 
-// Guardar Venta
+// Guardar Venta (Con validación estricta de inventario)
 app.post('/api/ventas', (req, res) => {
   const {
     folio,
@@ -748,69 +764,162 @@ app.post('/api/ventas', (req, res) => {
     items,
     cliente_id,
     puntos_ganados,
-    puntos_canjeados
+    puntos_canjeados,
+    fecha_hora
   } = req.body;
 
-  db.run(
-    `INSERT INTO ventas (folio, total, metodo_pago, monto_efectivo, monto_tarjeta, cajero, cliente_id, puntos_ganados, puntos_canjeados) 
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [
-      folio,
-      total,
-      metodo_pago,
-      monto_efectivo || 0,
-      monto_tarjeta || 0,
-      cajero || 'Turno 1',
-      cliente_id || null,
-      puntos_ganados || 0,
-      puntos_canjeados || 0
-    ],
-    function (err) {
-      if (err) return res.status(500).json({ error: err.message });
-      const ventaId = this.lastID;
+  if (!items || items.length === 0) {
+    return res.status(400).json({ error: 'No se puede procesar una venta sin artículos.' });
+  }
 
-      const stmtDetalle = db.prepare(
-        `INSERT INTO detalle_ventas (venta_id, producto_id, cantidad, precio_aplicado, descuento_porcentaje, comentario) VALUES (?, ?, ?, ?, ?, ?)`
-      );
-      const stmtStock = db.prepare(`UPDATE productos SET invActual = invActual - ? WHERE id = ?`);
+  // Filtrar productos físicos inventariados
+  const itemsFisicos = items.filter((it) => !it.esServicio && !it.noInventariado && it.id > 0 && !it.esKit);
+  const idsFisicos = itemsFisicos.map((it) => it.id);
 
-      items.forEach((item) => {
-        if (item.esKit && item.kit_id) {
-          stmtDetalle.run(ventaId, item.id || 0, item.cantidad, item.precioUnitario, item.descuento || 0, `Kit: ${item.nombre}`);
+  const procesarGuardado = () => {
+    const fechaHoraFinal = fecha_hora || new Date().toISOString();
 
-          db.all(`SELECT producto_id, cantidad FROM kit_detalles WHERE kit_id = ?`, [item.kit_id], (errK, componentes) => {
-            if (!errK && componentes) {
-              componentes.forEach((c) => {
-                const totalADescontar = c.cantidad * item.cantidad;
-                stmtStock.run(totalADescontar, c.producto_id);
-              });
-            }
-          });
-        } else {
-          stmtDetalle.run(ventaId, item.id, item.cantidad, item.precioUnitario, item.descuento || 0, item.comentario || '');
-          if (!item.esServicio && !item.noInventariado) {
-            stmtStock.run(item.cantidad, item.id);
-          }
-        }
-      });
+    db.run(
+      `INSERT INTO ventas (folio, fecha_hora, total, metodo_pago, monto_efectivo, monto_tarjeta, cajero, cliente_id, puntos_ganados, puntos_canjeados, estado) 
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'completada')`,
+      [
+        folio,
+        fechaHoraFinal,
+        total,
+        metodo_pago,
+        monto_efectivo || 0,
+        monto_tarjeta || 0,
+        cajero || 'Turno 1',
+        cliente_id || null,
+        puntos_ganados || 0,
+        puntos_canjeados || 0
+      ],
+      function (err) {
+        if (err) return res.status(500).json({ error: err.message });
+        const ventaId = this.lastID;
 
-      stmtDetalle.finalize();
-      stmtStock.finalize();
-
-      if (cliente_id) {
-        const ganados = parseInt(puntos_ganados) || 0;
-        const canjeados = parseInt(puntos_canjeados) || 0;
-        const delta = ganados - canjeados;
-
-        db.run(
-          `UPDATE clientes SET puntos_acumulados = MAX(0, puntos_acumulados + ?) WHERE id = ?`,
-          [delta, cliente_id]
+        const stmtDetalle = db.prepare(
+          `INSERT INTO detalle_ventas (venta_id, producto_id, cantidad, precio_aplicado, descuento_porcentaje, comentario) VALUES (?, ?, ?, ?, ?, ?)`
         );
-      }
+        const stmtStock = db.prepare(`UPDATE productos SET invActual = invActual - ? WHERE id = ?`);
 
-      res.json({ mensaje: 'Venta registrada con éxito', ventaId });
-    }
-  );
+        items.forEach((item) => {
+          const cantItem = parseFloat(item.cantidad) || 0;
+
+          if (item.esKit && item.kit_id) {
+            stmtDetalle.run(ventaId, item.id || 0, cantItem, item.precioUnitario, item.descuento || 0, `Kit: ${item.nombre}`);
+
+            db.all(`SELECT producto_id, cantidad FROM kit_detalles WHERE kit_id = ?`, [item.kit_id], (errK, componentes) => {
+              if (!errK && componentes) {
+                componentes.forEach((c) => {
+                  const totalADescontar = (parseFloat(c.cantidad) || 1) * cantItem;
+                  stmtStock.run(totalADescontar, c.producto_id);
+                });
+              }
+            });
+          } else {
+            stmtDetalle.run(ventaId, item.id || 0, cantItem, item.precioUnitario, item.descuento || 0, item.comentario || '');
+            if (!item.esServicio && !item.noInventariado && item.id > 0) {
+              stmtStock.run(cantItem, item.id);
+            }
+          }
+        });
+
+        stmtDetalle.finalize();
+        stmtStock.finalize();
+
+        if (cliente_id) {
+          const ganados = parseInt(puntos_ganados) || 0;
+          const canjeados = parseInt(puntos_canjeados) || 0;
+          const delta = ganados - canjeados;
+
+          db.run(
+            `UPDATE clientes SET puntos_acumulados = MAX(0, puntos_acumulados + ?) WHERE id = ?`,
+            [delta, cliente_id]
+          );
+        }
+
+        res.json({ mensaje: 'Venta registrada con éxito', ventaId });
+      }
+    );
+  };
+
+  // Verificación de stock en base de datos antes de cobrar
+  if (idsFisicos.length > 0) {
+    const placeholders = idsFisicos.map(() => '?').join(',');
+    db.all(`SELECT id, nombre, invActual FROM productos WHERE id IN (${placeholders})`, idsFisicos, (errStock, prodsBD) => {
+      if (errStock) return res.status(500).json({ error: errStock.message });
+
+      for (const itemVenta of itemsFisicos) {
+        const prodBD = prodsBD.find((p) => p.id === itemVenta.id);
+        const cantRequerida = parseFloat(itemVenta.cantidad) || 0;
+        const stockDisponible = parseFloat(prodBD?.invActual) || 0;
+
+        if (!prodBD || stockDisponible < cantRequerida) {
+          return res.status(400).json({
+            error: `Existencias insuficientes para "${itemVenta.nombre}". Stock disponible: ${stockDisponible} pz(s).`
+          });
+        }
+      }
+      procesarGuardado();
+    });
+  } else {
+    procesarGuardado();
+  }
+});
+
+// CANCELAR / ANULAR VENTA (Devuelve existencias y revierte puntos de lealtad)
+app.post('/api/ventas/:id/cancelar', (req, res) => {
+  const { id } = req.params;
+
+  db.get(`SELECT * FROM ventas WHERE id = ?`, [id], (err, venta) => {
+    if (err || !venta) return res.status(404).json({ error: 'Venta no encontrada.' });
+    if (venta.estado === 'cancelada') return res.status(400).json({ error: 'Esta venta ya se encuentra cancelada.' });
+
+    db.all(`SELECT * FROM detalle_ventas WHERE venta_id = ?`, [id], (errDet, detalles) => {
+      if (errDet) return res.status(500).json({ error: errDet.message });
+
+      db.serialize(() => {
+        db.run('BEGIN TRANSACTION');
+
+        db.run(`UPDATE ventas SET estado = 'cancelada' WHERE id = ?`, [id]);
+
+        // Regresar el inventario al stock físico
+        const stmtStock = db.prepare(`
+          UPDATE productos 
+          SET invActual = invActual + ? 
+          WHERE id = ? AND esServicio = 0 AND noInventariado = 0
+        `);
+
+        detalles.forEach((det) => {
+          if (det.producto_id && det.producto_id > 0) {
+            stmtStock.run(parseFloat(det.cantidad) || 0, det.producto_id);
+          }
+        });
+        stmtStock.finalize();
+
+        // Revertir puntos si hubo cliente registrado
+        if (venta.cliente_id) {
+          const ganados = parseInt(venta.puntos_ganados) || 0;
+          const canjeados = parseInt(venta.puntos_canjeados) || 0;
+          const delta = canjeados - ganados;
+
+          db.run(
+            `UPDATE clientes SET puntos_acumulados = MAX(0, puntos_acumulados + ?) WHERE id = ?`,
+            [delta, venta.cliente_id]
+          );
+        }
+
+        db.run('COMMIT', (errCommit) => {
+          if (errCommit) {
+            db.run('ROLLBACK');
+            return res.status(500).json({ error: 'Error al procesar la cancelación.' });
+          }
+          res.json({ mensaje: 'Venta cancelada exitosamente y stock devuelto.' });
+        });
+      });
+    });
+  });
 });
 
 app.post('/api/kits', (req, res) => {
@@ -822,7 +931,7 @@ app.post('/api/kits', (req, res) => {
 
     const stmt = db.prepare(`INSERT INTO kit_detalles (kit_id, producto_id, cantidad) VALUES (?, ?, ?)`);
     items.forEach((item) => {
-      stmt.run(kitId, item.producto_id, item.cantidad);
+      stmt.run(kitId, item.producto_id, parseFloat(item.cantidad) || 1);
     });
     stmt.finalize();
 
@@ -947,37 +1056,51 @@ app.post('/api/configuracion/lealtad', (req, res) => {
 
 // --- DASHBOARD RESUMEN ---
 app.get('/api/dashboard/resumen', (req, res) => {
-  db.get(`SELECT SUM(total) as totalVentas, COUNT(*) as totalTickets FROM ventas`, [], (err, rowVentas) => {
+  const sqlVentas = `
+    SELECT 
+      COALESCE(SUM(CASE WHEN estado != 'cancelada' THEN total ELSE 0 END), 0) as totalVentas,
+      COALESCE(SUM(CASE WHEN estado != 'cancelada' AND metodo_pago IN ('efectivo', 'mixto') THEN monto_efectivo ELSE 0 END), 0) as totalEfectivoVentas,
+      COUNT(CASE WHEN estado != 'cancelada' THEN 1 END) as totalTickets,
+      COUNT(CASE WHEN estado = 'cancelada' THEN 1 END) as totalDevoluciones
+    FROM ventas
+  `;
+
+  db.get(sqlVentas, [], (err, rowVentas) => {
     if (err) return res.status(500).json({ error: err.message });
 
     const sqlMovs = `
       SELECT 
-        SUM(CASE WHEN tipo = 'entrada' THEN monto ELSE 0 END) as totalEntradas,
-        SUM(CASE WHEN tipo = 'salida' THEN monto ELSE 0 END) as totalSalidas
+        COALESCE(SUM(CASE WHEN tipo = 'entrada' THEN monto ELSE 0 END), 0) as totalEntradas,
+        COALESCE(SUM(CASE WHEN tipo = 'salida' THEN monto ELSE 0 END), 0) as totalSalidas
       FROM movimientos_caja
     `;
 
     db.get(sqlMovs, [], (errMov, rowMovs) => {
       if (errMov) return res.status(500).json({ error: errMov.message });
 
-      db.all(`SELECT * FROM productos WHERE (invActual <= invMinimo OR invActual <= 5) AND esServicio = 0 AND noInventariado = 0 LIMIT 5`, [], (err2, rowsProd) => {
-        if (err2) return res.status(500).json({ error: err2.message });
+      db.all(
+        `SELECT * FROM productos WHERE (invActual <= invMinimo OR invActual <= 5) AND esServicio = 0 AND noInventariado = 0 LIMIT 5`,
+        [],
+        (err2, rowsProd) => {
+          if (err2) return res.status(500).json({ error: err2.message });
 
-        const ventasDia = rowVentas?.totalVentas || 0;
-        const totalEntradas = rowMovs?.totalEntradas || 0;
-        const totalSalidas = rowMovs?.totalSalidas || 0;
-        const dineroCaja = ventasDia + totalEntradas - totalSalidas;
+          const ventasDia = rowVentas?.totalVentas || 0;
+          const efectivoVentas = rowVentas?.totalEfectivoVentas || 0;
+          const totalEntradas = rowMovs?.totalEntradas || 0;
+          const totalSalidas = rowMovs?.totalSalidas || 0;
+          const dineroCaja = efectivoVentas + totalEntradas - totalSalidas;
 
-        res.json({
-          ventasDia,
-          ticketsDia: rowVentas?.totalTickets || 0,
-          totalEntradas,
-          totalSalidas,
-          dineroCaja,
-          devoluciones: 0,
-          inventarioBajo: rowsProd
-        });
-      });
+          res.json({
+            ventasDia,
+            ticketsDia: rowVentas?.totalTickets || 0,
+            devoluciones: rowVentas?.totalDevoluciones || 0,
+            totalEntradas,
+            totalSalidas,
+            dineroCaja,
+            inventarioBajo: rowsProd
+          });
+        }
+      );
     });
   });
 });
@@ -1034,7 +1157,7 @@ app.post('/api/productos/importar-masivo', (req, res) => {
         p.precioVenta || 0,
         p.ganancia || 0,
         p.invMinimo || 0,
-        p.invActual || 0,
+        parseFloat(p.invActual) || 0,
         p.puntosLealtad || 0,
         p.esServicio ? 1 : 0,
         p.esKit ? 1 : 0,
@@ -1150,7 +1273,7 @@ app.get('/api/clientes', (req, res) => {
     SELECT 
       c.*,
       COUNT(v.id) AS total_compras,
-      COALESCE(SUM(v.total), 0) AS total_gastado
+      COALESCE(SUM(CASE WHEN v.estado != 'cancelada' THEN v.total ELSE 0 END), 0) AS total_gastado
     FROM clientes c
     LEFT JOIN ventas v ON c.id = v.cliente_id
     GROUP BY c.id
@@ -1206,7 +1329,7 @@ app.delete('/api/clientes/:id', (req, res) => {
 app.get('/api/clientes/:id/historial', (req, res) => {
   const { id } = req.params;
   const sql = `
-    SELECT id, folio, fecha_hora, total, metodo_pago, puntos_ganados, puntos_canjeados
+    SELECT id, folio, fecha_hora, total, metodo_pago, puntos_ganados, puntos_canjeados, estado
     FROM ventas 
     WHERE cliente_id = ? 
     ORDER BY id DESC
@@ -1334,8 +1457,6 @@ app.post('/api/auth/login', (req, res) => {
 });
 
 // --- ENDPOINTS DEL MÓDULO BASE DE DATOS (RESPALDOS) ---
-
-// Métricas de estado de la base de datos
 app.get('/api/backup/estado', (req, res) => {
   try {
     const stats = fs.existsSync(RUTA_DB_ACTUAL) ? fs.statSync(RUTA_DB_ACTUAL) : null;
@@ -1354,7 +1475,6 @@ app.get('/api/backup/estado', (req, res) => {
         const config = {};
         if (rowsC) rowsC.forEach(r => config[r.clave] = r.valor);
 
-        // Listar respaldos existentes en la carpeta /backups
         let archivosBackups = [];
         if (fs.existsSync(RUTA_BACKUPS)) {
           archivosBackups = fs.readdirSync(RUTA_BACKUPS)
@@ -1384,7 +1504,6 @@ app.get('/api/backup/estado', (req, res) => {
   }
 });
 
-// Descargar archivo .db directamente al navegador
 app.get('/api/backup/descargar', (req, res) => {
   if (!fs.existsSync(RUTA_DB_ACTUAL)) {
     return res.status(404).send('Archivo de base de datos no encontrado.');
@@ -1400,7 +1519,6 @@ app.get('/api/backup/descargar', (req, res) => {
   });
 });
 
-// Guardar configuración de frecuencia
 app.post('/api/backup/configuracion', (req, res) => {
   const { frecuencia } = req.body;
   db.run(
@@ -1414,17 +1532,133 @@ app.post('/api/backup/configuracion', (req, res) => {
   );
 });
 
-// Generar respaldo manual en carpeta local
 app.post('/api/backup/generar-manual', (req, res) => {
   ejecutarRespaldoEnDisco();
   res.json({ mensaje: 'Copia de seguridad guardada en el equipo.' });
 });
 
-// Optimizar SQLite (VACUUM)
 app.post('/api/backup/optimizar', (req, res) => {
   db.run('VACUUM', [], function(err) {
     if (err) return res.status(500).json({ error: err.message });
     res.json({ mensaje: 'Base de datos optimizada y compactada correctamente.' });
+  });
+});
+
+// REPORTE DE RESURTIDO COMBINADO (Inventario bajo automático + Encargos manuales)
+app.get('/api/reportes/resurtido', (req, res) => {
+  const proveedorId = req.query.proveedor_id;
+
+  let sqlProductos = `
+    SELECT 
+      p.id,
+      p.codigoBarras,
+      p.nombre,
+      p.locacion,
+      p.costo,
+      p.costoPaquete,
+      p.piezasPorPaquete,
+      p.invActual,
+      p.invMinimo,
+      COALESCE(pr.nombre, 'Sin Proveedor Asignado') AS proveedor_nombre,
+      p.proveedor_id,
+      0 AS esManual,
+      '' AS nota_manual
+    FROM productos p
+    LEFT JOIN proveedores pr ON p.proveedor_id = pr.id
+    WHERE (p.invActual <= p.invMinimo OR p.invActual <= 5)
+      AND p.esServicio = 0 
+      AND p.noInventariado = 0
+  `;
+  const paramsProd = [];
+
+  if (proveedorId && proveedorId !== 'todos') {
+    if (proveedorId === 'sin_proveedor') {
+      sqlProductos += ` AND p.proveedor_id IS NULL`;
+    } else {
+      sqlProductos += ` AND p.proveedor_id = ?`;
+      paramsProd.push(proveedorId);
+    }
+  }
+
+  let sqlManuales = `
+    SELECT 
+      cm.id,
+      'ENCARGO' AS codigoBarras,
+      cm.nombre,
+      'Encargo / Novedad' AS locacion,
+      cm.costo_estimado AS costo,
+      0 AS costoPaquete,
+      1 AS piezasPorPaquete,
+      0 AS invActual,
+      cm.cantidad AS invMinimo,
+      COALESCE(pr.nombre, cm.proveedor_nombre, 'Sin Proveedor Asignado') AS proveedor_nombre,
+      cm.proveedor_id,
+      1 AS esManual,
+      cm.nota AS nota_manual
+    FROM compras_manuales cm
+    LEFT JOIN proveedores pr ON cm.proveedor_id = pr.id
+  `;
+  const paramsManual = [];
+
+  if (proveedorId && proveedorId !== 'todos') {
+    if (proveedorId === 'sin_proveedor') {
+      sqlManuales += ` AND cm.proveedor_id IS NULL`;
+    } else {
+      sqlManuales += ` AND cm.proveedor_id = ?`;
+      paramsManual.push(proveedorId);
+    }
+  }
+
+  db.all(sqlProductos, paramsProd, (errP, rowsProd) => {
+    if (errP) return res.status(500).json({ error: errP.message });
+
+    db.all(sqlManuales, paramsManual, (errM, rowsManual) => {
+      if (errM) return res.status(500).json({ error: errM.message });
+
+      const combinado = [...(rowsProd || []), ...(rowsManual || [])];
+      combinado.sort((a, b) => (a.proveedor_nombre || '').localeCompare(b.proveedor_nombre || '') || (a.nombre || '').localeCompare(b.nombre || ''));
+
+      res.json(combinado);
+    });
+  });
+});
+
+// Guardar producto manual por encargo / novedad
+app.post('/api/reportes/resurtido/manual', (req, res) => {
+  const { nombre, cantidad, proveedor_id, proveedor_nombre, costo_estimado, nota } = req.body;
+
+  if (!nombre || !nombre.trim()) {
+    return res.status(400).json({ error: 'Escribe el nombre o descripción del producto a buscar.' });
+  }
+
+  const sql = `
+    INSERT INTO compras_manuales (nombre, cantidad, proveedor_id, proveedor_nombre, costo_estimado, nota)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `;
+
+  db.run(
+    sql,
+    [
+      nombre.trim(),
+      parseFloat(cantidad) || 1,
+      proveedor_id ? parseInt(proveedor_id, 10) : null,
+      proveedor_nombre || null,
+      parseFloat(costo_estimado) || 0,
+      nota ? nota.trim() : ''
+    ],
+    function (err) {
+      if (err) return res.status(500).json({ error: err.message });
+      res.json({ id: this.lastID, mensaje: 'Encargo registrado exitosamente.' });
+    }
+  );
+});
+
+// Eliminar encargo manual de compras
+app.delete('/api/reportes/resurtido/manual/:id', (req, res) => {
+  const { id } = req.params;
+  db.run(`DELETE FROM compras_manuales WHERE id = ?`, [id], function (err) {
+    if (err) return res.status(500).json({ error: err.message });
+    res.json({ mensaje: 'Encargo eliminado de la lista.' });
   });
 });
 
