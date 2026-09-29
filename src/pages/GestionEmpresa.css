@@ -1,0 +1,125 @@
+.emp-container {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  gap: 12px;
+  padding: 12px;
+  box-sizing: border-box;
+  font-family: inherit;
+  color: #334155;
+  background-color: #f8fafc;
+  overflow-y: auto;
+}
+
+.emp-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background-color: #ffffff;
+  padding: 10px 18px;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+}
+
+.emp-tabs {
+  display: flex;
+  gap: 8px;
+  background-color: #e2e8f0;
+  padding: 4px;
+  border-radius: 6px;
+}
+
+.emp-tab-btn {
+  border: none;
+  background: none;
+  padding: 8px 16px;
+  font-weight: 700;
+  font-size: 13px;
+  color: #64748b;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.emp-tab-btn.active {
+  background-color: #ffffff;
+  color: #0f172a;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+.emp-card {
+  background-color: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  max-width: 900px;
+}
+
+.emp-grid-two {
+  display: grid;
+  grid-template-columns: 240px 1fr;
+  gap: 20px;
+}
+
+.emp-logo-box {
+  border: 2px dashed #cbd5e1;
+  border-radius: 8px;
+  height: 180px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background-color: #f8fafc;
+  overflow: hidden;
+}
+
+.emp-logo-box img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+.emp-form-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+
+.emp-form-fields .full {
+  grid-column: span 2;
+}
+
+/* Tabla de usuarios */
+.emp-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  text-align: left;
+}
+
+.emp-table th {
+  background-color: #f8fafc;
+  padding: 12px;
+  border-bottom: 2px solid #e2e8f0;
+  color: #475569;
+  font-weight: 700;
+}
+
+.emp-table td {
+  padding: 12px;
+  border-bottom: 1px solid #f1f5f9;
+  vertical-align: middle;
+}
+
+.badge-rol {
+  padding: 3px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.badge-rol.admin { background-color: #fef3c7; color: #b45309; }
+.badge-rol.cajero { background-color: #e0f2fe; color: #0284c7; }

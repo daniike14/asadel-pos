@@ -1,0 +1,118 @@
+.login-wrapper {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  width: 100vw;
+  height: 100vh;
+  background-color: #0f172a;
+  font-family: inherit;
+  color: #334155;
+  box-sizing: border-box;
+}
+
+.login-card {
+  background-color: #ffffff;
+  border-radius: 12px;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.3), 0 8px 10px -6px rgba(0, 0, 0, 0.2);
+  width: 380px;
+  max-width: 90vw;
+  padding: 32px 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.login-brand {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 8px;
+}
+
+.login-logo {
+  max-height: 50px;
+  object-fit: contain;
+}
+
+.login-brand h2 {
+  margin: 6px 0 0 0;
+  font-size: 18px;
+  color: #0f172a;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+}
+
+.login-brand p {
+  margin: 0;
+  font-size: 12px;
+  color: #64748b;
+}
+
+.login-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.login-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.login-field label {
+  font-size: 13px;
+  font-weight: 700;
+  color: #475569;
+}
+
+.login-field input {
+  padding: 10px 12px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  font-size: 14px;
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.login-field input:focus {
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+}
+
+.btn-login {
+  background-color: #2563eb;
+  color: #ffffff;
+  border: none;
+  padding: 12px;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background-color 0.15s;
+  margin-top: 6px;
+}
+
+.btn-login:hover {
+  background-color: #1d4ed8;
+}
+
+.login-error-msg {
+  background-color: #fee2e2;
+  border: 1px solid #fecaca;
+  color: #b91c1c;
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  text-align: center;
+}
+
+.login-footer-hint {
+  text-align: center;
+  font-size: 11px;
+  color: #94a3b8;
+  border-top: 1px solid #f1f5f9;
+  padding-top: 12px;
+}

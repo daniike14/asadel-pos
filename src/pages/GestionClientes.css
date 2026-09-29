@@ -1,0 +1,163 @@
+.gc-container {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  gap: 12px;
+  padding: 12px;
+  box-sizing: border-box;
+  font-family: inherit;
+  color: #334155;
+  background-color: #f8fafc;
+  overflow: hidden;
+}
+
+.gc-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background-color: #ffffff;
+  padding: 10px 18px;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+}
+
+/* Tarjetas de Métricas Superiores */
+.gc-metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 10px;
+}
+
+.gc-metric-box {
+  background-color: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 12px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+
+.gc-metric-box span {
+  font-size: 11px;
+  font-weight: 700;
+  color: #64748b;
+  text-transform: uppercase;
+}
+
+.gc-metric-box strong {
+  font-size: 20px;
+  font-weight: 800;
+  color: #0f172a;
+}
+
+/* Barra de Búsqueda y Acciones */
+.gc-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background-color: #ffffff;
+  padding: 10px 16px;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+  gap: 12px;
+}
+
+.gc-search {
+  flex: 1;
+  max-width: 420px;
+  padding: 8px 12px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  font-size: 13px;
+  outline: none;
+}
+
+.gc-search:focus {
+  border-color: #2563eb;
+}
+
+/* Tabla de Clientes */
+.gc-table-wrapper {
+  flex: 1;
+  background-color: #ffffff;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+  overflow-y: auto;
+}
+
+.gc-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  text-align: left;
+}
+
+.gc-table th {
+  background-color: #f8fafc;
+  padding: 12px;
+  border-bottom: 2px solid #e2e8f0;
+  color: #475569;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  font-weight: 700;
+}
+
+.gc-table td {
+  padding: 12px;
+  border-bottom: 1px solid #f1f5f9;
+  vertical-align: middle;
+}
+
+.gc-table tr:hover {
+  background-color: #f8fafc;
+}
+
+.badge-puntos {
+  background-color: #dcfce7;
+  color: #15803d;
+  font-weight: 800;
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-size: 13px;
+  display: inline-block;
+}
+
+.gc-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.btn-gc-action {
+  background-color: #ffffff;
+  border: 1px solid #cbd5e1;
+  padding: 5px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  transition: all 0.15s;
+}
+
+.btn-gc-action:hover {
+  background-color: #f1f5f9;
+}
+
+.btn-gc-action.delete:hover {
+  background-color: #fee2e2;
+  border-color: #fca5a5;
+  color: #b91c1c;
+}
+
+/* Recuadro de ejemplo interactivo en Configuración */
+.config-preview-box {
+  background-color: #eff6ff;
+  border: 1px solid #bfdbfe;
+  border-radius: 6px;
+  padding: 12px 14px;
+  font-size: 13px;
+  color: #1e40af;
+  line-height: 1.4;
+}

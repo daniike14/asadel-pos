@@ -3,6 +3,9 @@ import logoAsadel from '../assets/Logo.jpg';
 import './GestionProductos.css';
 import { API_URL } from '../config';
 
+const fechaHoyLocal = () => new Date().toISOString().split('T')[0];
+const generarCodigoKitAutomatico = () => `KIT-${Date.now().toString().slice(-5)}`;
+
 const estadoInicialForm = {
     id: null,
     codigoBarras: '',
@@ -25,6 +28,7 @@ const estadoInicialForm = {
     invMinimo: '',
     invActual: '',
     puntosLealtad: '',
+    fechaCompra: fechaHoyLocal()
 };
 
 const estadoInicialOpciones = {
@@ -37,8 +41,9 @@ const estadoInicialOpciones = {
 export default function GestionProductos() {
     const busquedaInputRef = useRef(null);
     const fileInputRef = useRef(null);
+    const kitBuscadorRef = useRef(null);
 
-    const [vista, setVista] = useState('catalogo'); // 'catalogo' | 'formulario' | 'promociones'
+    const [vista, setVista] = useState('catalogo'); // 'catalogo' | 'formulario' | 'promociones' | 'kits'
     const [pestanaActiva, setPestanaActiva] = useState('generales');
 
     const [departamentos, setDepartamentos] = useState([]);
@@ -46,10 +51,25 @@ export default function GestionProductos() {
     const [proveedores, setProveedores] = useState([]);
     const [productos, setProductos] = useState([]);
     const [promociones, setPromociones] = useState([]);
+    const [kits, setKits] = useState([]);
 
+    // Formulario de Promociones
     const [nuevaPromoNombre, setNuevaPromoNombre] = useState('');
     const [nuevaPromoTipo, setNuevaPromoTipo] = useState('porcentaje');
     const [nuevaPromoValor, setNuevaPromoValor] = useState('');
+
+    // Formulario de Kits
+    const [nuevoKitCodigo, setNuevoKitCodigo] = useState(generarCodigoKitAutomatico());
+    const [nuevoKitNombre, setNuevoKitNombre] = useState('');
+    const [nuevoKitPrecio, setNuevoKitPrecio] = useState('');
+    const [kitComponentes, setKitComponentes] = useState([]);
+
+    // Buscador predictivo para componentes de Kits
+    const [busquedaProductoKit, setBusquedaProductoKit] = useState('');
+    const [sugerenciasKit, setSugerenciasKit] = useState([]);
+    const [mostrarSugerenciasKit, setMostrarSugerenciasKit] = useState(false);
+    const [productoSeleccionadoKit, setProductoSeleccionadoKit] = useState(null);
+    const [cantidadSeleccionadaKit, setCantidadSeleccionadaKit] = useState('1');
 
     const [busqueda, setBusqueda] = useState('');
     const [filtroDepto, setFiltroDepto] = useState('');
@@ -84,25 +104,70 @@ export default function GestionProductos() {
     const [nuevoTelefono, setNuevoTelefono] = useState('');
     const [nuevoContacto, setNuevoContacto] = useState('');
 
+    const [productoHistorial, setProductoHistorial] = useState(null);
+    const [listaHistorialCostos, setListaHistorialCostos] = useState([]);
+    const [datosNuevaCompra, setDatosNuevaCompra] = useState({
+        proveedor: '',
+        costoPaquete: '',
+        piezasPorPaquete: '1',
+        costoUnitario: '',
+        cantidadComprada: '',
+        nota: '',
+        fechaCompra: fechaHoyLocal(),
+        actualizarPrecioVenta: false,
+        nuevoPrecioVenta: ''
+    });
+
     useEffect(() => {
         if (vista === 'catalogo' && busquedaInputRef.current) {
             setTimeout(() => busquedaInputRef.current?.focus(), 50);
         }
     }, [vista]);
 
+    // Filtrado de sugerencias de componentes de kit
+    useEffect(() => {
+        const termino = busquedaProductoKit.trim().toLowerCase();
+        if (termino.length >= 1) {
+            const coincidencias = productos
+                .filter(p => !p.esServicio && !p.esKit)
+                .filter(p => 
+                    p.nombre.toLowerCase().includes(termino) || 
+                    (p.codigoBarras && p.codigoBarras.toLowerCase().includes(termino))
+                )
+                .slice(0, 6);
+            setSugerenciasKit(coincidencias);
+            setMostrarSugerenciasKit(coincidencias.length > 0);
+        } else {
+            setSugerenciasKit([]);
+            setMostrarSugerenciasKit(false);
+        }
+    }, [busquedaProductoKit, productos]);
+
+    useEffect(() => {
+        const handleClickAfuera = (e) => {
+            if (kitBuscadorRef.current && !kitBuscadorRef.current.contains(e.target)) {
+                setMostrarSugerenciasKit(false);
+            }
+        };
+        document.addEventListener('mousedown', handleClickAfuera);
+        return () => document.removeEventListener('mousedown', handleClickAfuera);
+    }, []);
+
     const cargarCatalogos = async () => {
         try {
-            const [resDeptos, resCats, resProvs, resPromos] = await Promise.all([
+            const [resDeptos, resCats, resProvs, resPromos, resKits] = await Promise.all([
                 fetch(`${API_URL}/api/departamentos`),
                 fetch(`${API_URL}/api/categorias`),
                 fetch(`${API_URL}/api/proveedores`),
                 fetch(`${API_URL}/api/promociones`),
+                fetch(`${API_URL}/api/kits`)
             ]);
 
             if (resDeptos.ok) setDepartamentos(await resDeptos.json());
             if (resCats.ok) setCategorias(await resCats.json());
             if (resProvs.ok) setProveedores(await resProvs.json());
             if (resPromos.ok) setPromociones(await resPromos.json());
+            if (resKits.ok) setKits(await resKits.json());
         } catch (err) {
             console.error('Error al cargar catálogos:', err);
         }
@@ -117,7 +182,7 @@ export default function GestionProductos() {
                 setProductos(data);
             }
         } catch (err) {
-            console.error('Error al cargar la lista de productos:', err);
+            console.error('Error al cargar productos:', err);
         } finally {
             setCargando(false);
         }
@@ -127,6 +192,186 @@ export default function GestionProductos() {
         cargarCatalogos();
         cargarProductos();
     }, []);
+
+    // Exclusión mutua estricta de opciones especiales[cite: 24]
+    const handleOpcionChange = (key) => {
+        setOpciones((prev) => {
+            const estabaActiva = prev[key];
+            const nuevoEstado = {
+                esServicio: false,
+                esKit: false,
+                aGranel: false,
+                noInventariado: false,
+                [key]: !estabaActiva
+            };
+
+            if (nuevoEstado.esServicio || nuevoEstado.noInventariado) {
+                setDatosForm((f) => ({ ...f, invActual: '0', invMinimo: '0' }));
+            }
+            if (nuevoEstado.esServicio) {
+                setDatosForm((f) => ({ ...f, claveUnidad: 'E48', locacion: '', imagenLocacion: '' }));
+            } else if (estabaActiva && key === 'esServicio') {
+                setDatosForm((f) => ({ ...f, claveUnidad: 'PZA' }));
+            }
+
+            if (nuevoEstado.aGranel && datosForm.claveUnidad === 'PZA') {
+                setDatosForm((f) => ({ ...f, claveUnidad: 'GRM' }));
+            }
+
+            return nuevoEstado;
+        });
+    };
+
+    // Funciones del Kit
+    const seleccionarProductoKit = (prod) => {
+        setProductoSeleccionadoKit(prod);
+        setBusquedaProductoKit(prod.nombre);
+        setMostrarSugerenciasKit(false);
+    };
+
+    const agregarItemAlKit = () => {
+        if (!productoSeleccionadoKit) {
+            return alert('⚠️ Busca y selecciona un producto del catálogo para añadirlo al kit.');
+        }
+        const cant = parseInt(cantidadSeleccionadaKit, 10);
+        if (isNaN(cant) || cant <= 0) return alert('Ingresa una cantidad válida.');
+
+        const existente = kitComponentes.find((item) => item.producto_id === productoSeleccionadoKit.id);
+        if (existente) {
+            setKitComponentes(kitComponentes.map((item) => 
+                item.producto_id === productoSeleccionadoKit.id ? { ...item, cantidad: item.cantidad + cant } : item
+            ));
+        } else {
+            setKitComponentes([
+                ...kitComponentes,
+                {
+                    producto_id: productoSeleccionadoKit.id,
+                    nombre: productoSeleccionadoKit.nombre,
+                    precioUnitario: parseFloat(productoSeleccionadoKit.precioVenta) || 0,
+                    cantidad: cant
+                }
+            ]);
+        }
+
+        setProductoSeleccionadoKit(null);
+        setBusquedaProductoKit('');
+        setCantidadSeleccionadaKit('1');
+    };
+
+    const quitarItemDelKit = (productoId) => {
+        setKitComponentes(kitComponentes.filter((it) => it.producto_id !== productoId));
+    };
+
+    const guardarKit = async (e) => {
+        e.preventDefault();
+        if (!nuevoKitCodigo.trim() || !nuevoKitNombre.trim() || !nuevoKitPrecio) {
+            return alert('Completa el código, nombre y precio del kit.');
+        }
+        if (kitComponentes.length === 0) {
+            return alert('Agrega al menos un artículo componente al kit.');
+        }
+
+        const payload = {
+            codigo: nuevoKitCodigo.trim(),
+            nombre: nuevoKitNombre.trim(),
+            precio: parseFloat(nuevoKitPrecio),
+            items: kitComponentes.map((it) => ({
+                producto_id: it.producto_id,
+                cantidad: it.cantidad
+            }))
+        };
+
+        try {
+            const res = await fetch(`${API_URL}/api/kits`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+
+            if (res.ok) {
+                alert('✅ ¡Kit creado exitosamente!');
+                setNuevoKitCodigo(generarCodigoKitAutomatico());
+                setNuevoKitNombre('');
+                setNuevoKitPrecio('');
+                setKitComponentes([]);
+                cargarCatalogos();
+            } else {
+                alert('Error al guardar el kit en el servidor.');
+            }
+        } catch (error) {
+            alert('Error de conexión al guardar el kit.');
+        }
+    };
+
+    const eliminarKit = async (id, nombre) => {
+        if (!window.confirm(`¿Seguro que deseas eliminar el kit "${nombre}"?`)) return;
+        try {
+            const res = await fetch(`${API_URL}/api/kits/${id}`, { method: 'DELETE' });
+            if (res.ok) {
+                alert('Kit eliminado correctamente.');
+                cargarCatalogos();
+            }
+        } catch (error) {
+            alert('Error al eliminar el kit.');
+        }
+    };
+
+    const costoSumaComponentes = kitComponentes.reduce(
+        (acc, it) => acc + it.precioUnitario * it.cantidad,
+        0
+    );
+
+    // Historial de compras
+    const abrirHistorialCostos = async (prod) => {
+        setProductoHistorial(prod);
+        setDatosNuevaCompra({
+            proveedor: prod.proveedor_nombre || '',
+            costoPaquete: prod.costoPaquete || '',
+            piezasPorPaquete: prod.piezasPorPaquete || '1',
+            costoUnitario: prod.costo || '',
+            cantidadComprada: '',
+            nota: '',
+            fechaCompra: fechaHoyLocal(),
+            actualizarPrecioVenta: false,
+            nuevoPrecioVenta: prod.precioVenta || ''
+        });
+
+        try {
+            const res = await fetch(`${API_URL}/api/productos/${prod.id}/historial-costos`);
+            if (res.ok) setListaHistorialCostos(await res.json());
+        } catch (error) {
+            console.error('Error al consultar historial:', error);
+        }
+    };
+
+    const registrarNuevaCompra = async (e) => {
+        e.preventDefault();
+        if (!datosNuevaCompra.proveedor.trim()) return alert('⚠️ Indica el proveedor o lugar de compra.');
+        if (!datosNuevaCompra.costoUnitario) return alert('⚠️ Ingresa el costo unitario de la compra.');
+
+        try {
+            const res = await fetch(`${API_URL}/api/productos/${productoHistorial.id}/registrar-compra`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(datosNuevaCompra)
+            });
+
+            if (res.ok) {
+                alert('✅ ¡Compra registrada! Se actualizó el stock y el historial.');
+                await cargarProductos();
+                const resHist = await fetch(`${API_URL}/api/productos/${productoHistorial.id}/historial-costos`);
+                if (resHist.ok) setListaHistorialCostos(await resHist.json());
+                setDatosNuevaCompra((prev) => ({ 
+                    ...prev, 
+                    cantidadComprada: '', 
+                    nota: '',
+                    fechaCompra: fechaHoyLocal() 
+                }));
+            }
+        } catch (error) {
+            alert('Error de conexión al guardar la compra.');
+        }
+    };
 
     const guardarPromocion = async (e) => {
         e.preventDefault();
@@ -202,6 +447,7 @@ export default function GestionProductos() {
             invMinimo: prod.invMinimo || '',
             invActual: prod.invActual || '',
             puntosLealtad: prod.puntosLealtad || '',
+            fechaCompra: prod.fechaCompra ? prod.fechaCompra.split('T')[0] : fechaHoyLocal()
         });
 
         setOpciones({
@@ -242,10 +488,6 @@ export default function GestionProductos() {
     const handleInputChange = (e) => {
         const { name, value } = e.target;
         setDatosForm((prev) => ({ ...prev, [name]: value }));
-    };
-
-    const handleOpcionChange = (key) => {
-        setOpciones((prev) => ({ ...prev, [key]: !prev[key] }));
     };
 
     const handleImagenChange = (e, campo) => {
@@ -328,7 +570,7 @@ export default function GestionProductos() {
         let url = '';
         let body = {};
         if (modalTipo === 'departamento') { url = `${API_URL}/api/departamentos`; body = { nombre: nuevoNombre }; }
-        else if (modalTipo === 'categoria') { url = `${API_URL}api/categorias`; body = { nombre: nuevoNombre }; }
+        else if (modalTipo === 'categoria') { url = `${API_URL}/api/categorias`; body = { nombre: nuevoNombre }; }
         else if (modalTipo === 'proveedor') { url = `${API_URL}/api/proveedores`; body = { nombre: nuevoNombre, telefono: nuevoTelefono, contacto: nuevoContacto }; }
 
         try {
@@ -384,6 +626,7 @@ export default function GestionProductos() {
     const stockTotalPzs = parseInt(datosForm.invActual) || 0;
     const paquetesCompletos = Math.floor(stockTotalPzs / pzsPorPaquete);
     const piezasSueltas = stockTotalPzs % pzsPorPaquete;
+    const deshabilitaInventario = opciones.esServicio || opciones.noInventariado;
 
     return (
         <div className="gp-container">
@@ -393,12 +636,16 @@ export default function GestionProductos() {
                     <h2>
                         {vista === 'catalogo' ? 'CATÁLOGO DE PRODUCTOS' : 
                          vista === 'promociones' ? 'GESTIÓN DE PROMOCIONES' : 
+                         vista === 'kits' ? 'PAQUETES Y KITS ESCOLARES' :
                          datosForm.id ? 'EDITAR PRODUCTO' : 'AGREGAR NUEVO PRODUCTO'}
                     </h2>
                 </div>
                 <div className="gp-header-actions">
                     {vista === 'catalogo' ? (
                         <>
+                            <button className="btn-secondary" onClick={() => { setNuevoKitCodigo(generarCodigoKitAutomatico()); setVista('kits'); }}>
+                                📦 Paquetes y Kits
+                            </button>
                             <button className="btn-secondary" onClick={() => setVista('promociones')}>
                                 🏷️ Promociones
                             </button>
@@ -430,6 +677,186 @@ export default function GestionProductos() {
                     )}
                 </div>
             </header>
+
+            {/* VISTA DE KITS Y PAQUETES */}
+            {vista === 'kits' && (
+                <div className="gp-catalogo-view">
+                    <div className="gp-kits-builder">
+                        <form className="box-kit-form" onSubmit={guardarKit}>
+                            <h3>+ Crear Paquete o Kit Escolar</h3>
+                            <div className="form-group">
+                                <label style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                    Código del Kit (Generado Automáticamente):
+                                    <button 
+                                        type="button" 
+                                        onClick={() => setNuevoKitCodigo(generarCodigoKitAutomatico())} 
+                                        style={{ background: 'none', border: 'none', color: '#2563eb', cursor: 'pointer', fontSize: '11px', fontWeight: 'bold' }}
+                                    >
+                                        🔄 Cambiar código
+                                    </button>
+                                </label>
+                                <input 
+                                    type="text" 
+                                    value={nuevoKitCodigo} 
+                                    onChange={(e) => setNuevoKitCodigo(e.target.value)} 
+                                    required 
+                                />
+                            </div>
+                            <div className="form-group">
+                                <label>Nombre del Kit:</label>
+                                <input 
+                                    type="text" 
+                                    placeholder="Ej. Paquete Escolar Primaria..." 
+                                    value={nuevoKitNombre} 
+                                    onChange={(e) => setNuevoKitNombre(e.target.value)} 
+                                    required 
+                                />
+                            </div>
+                            <div className="form-group">
+                                <label>Precio Especial de Venta ($):</label>
+                                <input 
+                                    type="number" 
+                                    step="0.5" 
+                                    placeholder="0.00" 
+                                    value={nuevoKitPrecio} 
+                                    onChange={(e) => setNuevoKitPrecio(e.target.value)} 
+                                    required 
+                                />
+                            </div>
+
+                            <button type="submit" className="btn-primary" style={{ marginTop: '10px' }}>
+                                💾 Guardar Kit
+                            </button>
+                        </form>
+
+                        <div className="box-kit-componentes">
+                            <h4>Componentes del Paquete</h4>
+                            
+                            <div className="kit-selector-row" ref={kitBuscadorRef}>
+                                <div className="kit-search-wrapper">
+                                    <input 
+                                        type="text" 
+                                        placeholder="🔍 Escribe para buscar producto..." 
+                                        value={busquedaProductoKit}
+                                        onChange={(e) => {
+                                            setBusquedaProductoKit(e.target.value);
+                                            setProductoSeleccionadoKit(null);
+                                        }}
+                                        onFocus={() => {
+                                            if (sugerenciasKit.length > 0) setMostrarSugerenciasKit(true);
+                                        }}
+                                    />
+                                    {mostrarSugerenciasKit && sugerenciasKit.length > 0 && (
+                                        <ul className="kit-autocomplete-dropdown">
+                                            {sugerenciasKit.map((prod) => (
+                                                <li 
+                                                    key={prod.id} 
+                                                    className="kit-autocomplete-item"
+                                                    onMouseDown={(e) => {
+                                                        e.preventDefault();
+                                                        seleccionarProductoKit(prod);
+                                                    }}
+                                                >
+                                                    <div>
+                                                        <strong>{prod.nombre}</strong>
+                                                        <div style={{ fontSize: '11px', color: '#64748b' }}>Cód: {prod.codigoBarras || 'S/N'}</div>
+                                                    </div>
+                                                    <span style={{ fontWeight: 'bold', color: '#16a34a' }}>
+                                                        ${parseFloat(prod.precioVenta || 0).toFixed(2)}
+                                                    </span>
+                                                </li>
+                                            ))}
+                                        </ul>
+                                    )}
+                                </div>
+                                <input 
+                                    type="number" 
+                                    min="1" 
+                                    value={cantidadSeleccionadaKit} 
+                                    onChange={(e) => setCantidadSeleccionadaKit(e.target.value)} 
+                                    title="Cantidad de piezas en el kit"
+                                />
+                                <button type="button" className="btn-primary" onClick={agregarItemAlKit}>
+                                    + Agregar
+                                </button>
+                            </div>
+
+                            <div className="kit-items-list">
+                                {kitComponentes.map((item) => (
+                                    <div key={item.producto_id} className="kit-item-row">
+                                        <div>
+                                            <strong>{item.cantidad}x</strong> {item.nombre} 
+                                            <span style={{ color: '#64748b', marginLeft: '6px' }}>
+                                                (${(item.precioUnitario * item.cantidad).toFixed(2)})
+                                            </span>
+                                        </div>
+                                        <button 
+                                            type="button" 
+                                            className="btn-remove-kit-item" 
+                                            onClick={() => quitarItemDelKit(item.producto_id)}
+                                        >
+                                            ✕
+                                        </button>
+                                    </div>
+                                ))}
+                                {kitComponentes.length === 0 && (
+                                    <div style={{ color: '#94a3b8', fontStyle: 'italic', padding: '15px 0', textAlign: 'center' }}>
+                                        No has agregado artículos a este kit todavía.
+                                    </div>
+                                )}
+                            </div>
+
+                            <div className="kit-cost-preview">
+                                <span>Suma de precios normales:</span>
+                                <strong>${costoSumaComponentes.toFixed(2)} MXN</strong>
+                            </div>
+                        </div>
+                    </div>
+
+                    <h3 style={{ marginTop: '20px' }}>Kits Registrados en el Sistema</h3>
+                    <table className="gp-table">
+                        <thead>
+                            <tr>
+                                <th>Código</th>
+                                <th>Nombre del Kit</th>
+                                <th>Artículos que Descuenta</th>
+                                <th>Precio Venta</th>
+                                <th style={{ width: '80px', textAlign: 'center' }}>Acción</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {kits.map((k) => (
+                                <tr key={k.id}>
+                                    <td><code>{k.codigo}</code></td>
+                                    <td><strong>{k.nombre}</strong></td>
+                                    <td>
+                                        {(k.items || []).map((it, idx) => (
+                                            <span key={idx} style={{ display: 'inline-block', background: '#e2e8f0', padding: '2px 6px', borderRadius: '4px', fontSize: '11px', margin: '2px' }}>
+                                                {it.cantidad}x {it.nombre}
+                                            </span>
+                                        ))}
+                                    </td>
+                                    <td style={{ fontWeight: 'bold', color: '#16a34a' }}>
+                                        ${parseFloat(k.precio || 0).toFixed(2)}
+                                    </td>
+                                    <td style={{ textAlign: 'center' }}>
+                                        <button 
+                                            className="btn-action delete" 
+                                            onClick={() => eliminarKit(k.id, k.nombre)} 
+                                            title="Eliminar Kit"
+                                        >
+                                            🗑️
+                                        </button>
+                                    </td>
+                                </tr>
+                            ))}
+                            {kits.length === 0 && (
+                                <tr><td colSpan="5" className="gp-empty">No hay kits registrados todavía.</td></tr>
+                            )}
+                        </tbody>
+                    </table>
+                </div>
+            )}
 
             {/* VISTA DE PROMOCIONES */}
             {vista === 'promociones' && (
@@ -542,8 +969,20 @@ export default function GestionProductos() {
                                         const stock = parseInt(prod.invActual) || 0;
                                         const min = parseInt(prod.invMinimo) || 0;
                                         let badgeClass = 'badge-success'; let badgeText = 'Normal';
-                                        if (stock <= 0) { badgeClass = 'badge-danger'; badgeText = 'Agotado'; } 
-                                        else if (stock <= min) { badgeClass = 'badge-warning'; badgeText = 'Bajo Stock'; }
+                                        
+                                        if (prod.esServicio) {
+                                            badgeClass = 'badge-warning';
+                                            badgeText = 'Servicio';
+                                        } else if (prod.noInventariado) {
+                                            badgeClass = 'badge-warning';
+                                            badgeText = 'No Inv.';
+                                        } else if (stock <= 0) { 
+                                            badgeClass = 'badge-danger'; 
+                                            badgeText = 'Agotado'; 
+                                        } else if (stock <= min) { 
+                                            badgeClass = 'badge-warning'; 
+                                            badgeText = 'Bajo Stock'; 
+                                        }
 
                                         return (
                                             <tr key={prod.id || prod.codigoBarras}>
@@ -566,6 +1005,8 @@ export default function GestionProductos() {
                                                     <td className="col-nombre">
                                                         <strong>{prod.nombre}</strong>
                                                         {prod.atributoColor && <small>({prod.atributoColor})</small>}
+                                                        {prod.esKit ? <small style={{ color: '#0d6efd' }}>📦 [Kit]</small> : null}
+                                                        {prod.aGranel ? <small style={{ color: '#16a34a' }}>⚖️ [Granel]</small> : null}
                                                     </td>
                                                 )}
                                                 {columnasVisibles.departamento && <td>{prod.departamento_nombre || <span style={{ color: '#aaa', fontStyle: 'italic' }}>Sin asignación</span>}</td>}
@@ -573,10 +1014,21 @@ export default function GestionProductos() {
                                                 {columnasVisibles.proveedor && <td>{prod.proveedor_nombre || <span style={{ color: '#aaa', fontStyle: 'italic' }}>Sin asignación</span>}</td>}
                                                 {columnasVisibles.costo && <td>${parseFloat(prod.costo || 0).toFixed(2)}</td>}
                                                 {columnasVisibles.precio && <td><strong>${parseFloat(prod.precioVenta || 0).toFixed(2)}</strong></td>}
-                                                {columnasVisibles.stock && <td>{prod.invActual || 0} pza(s)</td>}
+                                                {columnasVisibles.stock && (
+                                                    <td>
+                                                        {prod.esServicio || prod.noInventariado ? '—' : `${prod.invActual || 0} pza(s)`}
+                                                    </td>
+                                                )}
                                                 {columnasVisibles.estado && <td><span className={`badge ${badgeClass}`}>{badgeText}</span></td>}
                                                 {columnasVisibles.acciones && (
                                                     <td className="col-actions">
+                                                        <button 
+                                                            className="btn-action history" 
+                                                            onClick={() => abrirHistorialCostos(prod)} 
+                                                            title="Historial de costos y registrar nueva compra"
+                                                        >
+                                                            📜
+                                                        </button>
                                                         <button className="btn-action edit" onClick={() => handleEditarProducto(prod)} title="Editar">✏️</button>
                                                         <button className="btn-action delete" onClick={() => handleEliminarProducto(prod.id, prod.nombre)} title="Eliminar">🗑️</button>
                                                     </td>
@@ -599,6 +1051,178 @@ export default function GestionProductos() {
                             </div>
                         </div>
                     )}
+                </div>
+            )}
+
+            {/* MODAL DE HISTORIAL DE COMPRAS / COSTOS Y REGISTRO RÁPIDO */}
+            {productoHistorial && (
+                <div className="gp-modal-overlay">
+                    <div className="gp-modal gp-modal-historial">
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #e2e8f0', paddingBottom: '10px', marginBottom: '15px' }}>
+                            <div>
+                                <h3 style={{ margin: 0 }}>HISTORIAL DE COMPRAS Y COSTOS</h3>
+                                <p style={{ margin: '4px 0 0 0', color: '#64748b', fontSize: '0.85rem' }}>
+                                    Producto: <strong>{productoHistorial.nombre}</strong> (Cód: {productoHistorial.codigoBarras || 'S/N'})
+                                </p>
+                            </div>
+                            <button className="btn-secondary" onClick={() => setProductoHistorial(null)}>✕ Cerrar</button>
+                        </div>
+
+                        <form className="box-nueva-compra" onSubmit={registrarNuevaCompra}>
+                            <h4>+ Registrar Nueva Compra / Entrada de Mercancía</h4>
+                            <div className="grid-nueva-compra">
+                                <div className="form-group">
+                                    <label>Fecha de Compra:</label>
+                                    <input 
+                                        type="date" 
+                                        value={datosNuevaCompra.fechaCompra} 
+                                        onChange={(e) => setDatosNuevaCompra({ ...datosNuevaCompra, fechaCompra: e.target.value })} 
+                                        required 
+                                    />
+                                </div>
+                                <div className="form-group">
+                                    <label>Proveedor / Tienda:</label>
+                                    <input 
+                                        type="text" 
+                                        placeholder="Ej. Tony, Scribe, Lumen..." 
+                                        value={datosNuevaCompra.proveedor} 
+                                        onChange={(e) => setDatosNuevaCompra({ ...datosNuevaCompra, proveedor: e.target.value })} 
+                                        required 
+                                    />
+                                </div>
+                                <div className="form-group">
+                                    <label>Costo Caja/Paq ($):</label>
+                                    <input 
+                                        type="number" 
+                                        step="0.01" 
+                                        placeholder="0.00" 
+                                        value={datosNuevaCompra.costoPaquete} 
+                                        onChange={(e) => {
+                                            const cPaq = parseFloat(e.target.value) || 0;
+                                            const pzs = parseFloat(datosNuevaCompra.piezasPorPaquete) || 1;
+                                            setDatosNuevaCompra({ 
+                                                ...datosNuevaCompra, 
+                                                costoPaquete: e.target.value,
+                                                costoUnitario: cPaq > 0 && pzs > 0 ? (cPaq / pzs).toFixed(2) : datosNuevaCompra.costoUnitario
+                                            });
+                                        }} 
+                                    />
+                                </div>
+                                <div className="form-group">
+                                    <label>Pzs por Caja:</label>
+                                    <input 
+                                        type="number" 
+                                        min="1" 
+                                        value={datosNuevaCompra.piezasPorPaquete} 
+                                        onChange={(e) => {
+                                            const pzs = parseFloat(e.target.value) || 1;
+                                            const cPaq = parseFloat(datosNuevaCompra.costoPaquete) || 0;
+                                            setDatosNuevaCompra({ 
+                                                ...datosNuevaCompra, 
+                                                piezasPorPaquete: e.target.value,
+                                                costoUnitario: cPaq > 0 && pzs > 0 ? (cPaq / pzs).toFixed(2) : datosNuevaCompra.costoUnitario
+                                            });
+                                        }} 
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="grid-nueva-compra" style={{ marginTop: '10px' }}>
+                                <div className="form-group">
+                                    <label>Costo Unitario ($):</label>
+                                    <input 
+                                        type="number" 
+                                        step="0.01" 
+                                        value={datosNuevaCompra.costoUnitario} 
+                                        onChange={(e) => setDatosNuevaCompra({ ...datosNuevaCompra, costoUnitario: e.target.value })} 
+                                        required 
+                                    />
+                                </div>
+                                <div className="form-group">
+                                    <label>Pzs Compradas (Sumar a Stock):</label>
+                                    <input 
+                                        type="number" 
+                                        min="0" 
+                                        placeholder="Ej. 50" 
+                                        value={datosNuevaCompra.cantidadComprada} 
+                                        onChange={(e) => setDatosNuevaCompra({ ...datosNuevaCompra, cantidadComprada: e.target.value })} 
+                                    />
+                                </div>
+                                <div className="form-group" style={{ gridColumn: 'span 1' }}>
+                                    <label>Nota de la compra (Opcional):</label>
+                                    <input 
+                                        type="text" 
+                                        placeholder="Ej. Subió $4 en Tony..." 
+                                        value={datosNuevaCompra.nota} 
+                                        onChange={(e) => setDatosNuevaCompra({ ...datosNuevaCompra, nota: e.target.value })} 
+                                    />
+                                </div>
+                                <div style={{ display: 'flex', alignItems: 'flex-end' }}>
+                                    <button type="submit" className="btn-primary" style={{ width: '100%', height: '38px' }}>
+                                        📥 Guardar Compra
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div style={{ marginTop: '10px', display: 'flex', alignItems: 'center', gap: '15px' }}>
+                                <label className="checkbox-label">
+                                    <input 
+                                        type="checkbox" 
+                                        checked={datosNuevaCompra.actualizarPrecioVenta} 
+                                        onChange={(e) => setDatosNuevaCompra({ ...datosNuevaCompra, actualizarPrecioVenta: e.target.checked })} 
+                                    />
+                                    ¿Ajustar también nuevo Precio de Venta al Público?
+                                </label>
+                                {datosNuevaCompra.actualizarPrecioVenta && (
+                                    <input 
+                                        type="number" 
+                                        step="0.5" 
+                                        style={{ width: '120px', padding: '4px 8px' }} 
+                                        placeholder="Nuevo Precio $" 
+                                        value={datosNuevaCompra.nuevoPrecioVenta} 
+                                        onChange={(e) => setDatosNuevaCompra({ ...datosNuevaCompra, nuevoPrecioVenta: e.target.value })} 
+                                    />
+                                )}
+                            </div>
+                        </form>
+
+                        <h4>Bitácora de Costos Anteriores</h4>
+                        <table className="gp-table" style={{ fontSize: '0.85rem' }}>
+                            <thead>
+                                <tr>
+                                    <th>Fecha</th>
+                                    <th>Proveedor / Lugar</th>
+                                    <th>Costo Caja/Paq</th>
+                                    <th>Pzs/Caja</th>
+                                    <th>Costo Unitario</th>
+                                    <th>Compradas</th>
+                                    <th>Nota</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {listaHistorialCostos.map((h) => (
+                                    <tr key={h.id}>
+                                        <td>
+                                            {h.fecha_compra ? h.fecha_compra.split('T')[0] : '—'}
+                                        </td>
+                                        <td><strong>{h.proveedor}</strong></td>
+                                        <td>{h.costo_paquete > 0 ? `$${parseFloat(h.costo_paquete).toFixed(2)}` : '-'}</td>
+                                        <td>{h.piezas_por_paquete || 1} pzs</td>
+                                        <td style={{ fontWeight: 'bold', color: '#16a34a' }}>${parseFloat(h.costo_unitario).toFixed(2)}</td>
+                                        <td>{h.cantidad_comprada ? `+${h.cantidad_comprada} pzs` : '-'}</td>
+                                        <td style={{ color: '#64748b', fontStyle: 'italic' }}>{h.nota || '-'}</td>
+                                    </tr>
+                                ))}
+                                {listaHistorialCostos.length === 0 && (
+                                    <tr>
+                                        <td colSpan="7" style={{ textAlign: 'center', padding: '20px', color: '#94a3b8' }}>
+                                            No hay registros de compras anteriores para este producto.
+                                        </td>
+                                    </tr>
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
             )}
 
@@ -632,12 +1256,41 @@ export default function GestionProductos() {
                             />
                         </label>
 
+                        {/* Opciones Especiales Excluyentes[cite: 24] */}
                         <div className="gp-options-box">
                             <h4>Opciones Especiales:</h4>
-                            <label className="checkbox-label"><input type="checkbox" checked={opciones.esServicio} onChange={() => handleOpcionChange('esServicio')} />Este producto es servicio</label>
-                            <label className="checkbox-label"><input type="checkbox" checked={opciones.esKit} onChange={() => handleOpcionChange('esKit')} />Este producto es un Kit</label>
-                            <label className="checkbox-label"><input type="checkbox" checked={opciones.aGranel} onChange={() => handleOpcionChange('aGranel')} />Se vende a granel</label>
-                            <label className="checkbox-label"><input type="checkbox" checked={opciones.noInventariado} onChange={() => handleOpcionChange('noInventariado')} />Producto no inventariado</label>
+                            <label className="checkbox-label">
+                                <input 
+                                    type="checkbox" 
+                                    checked={opciones.esServicio} 
+                                    onChange={() => handleOpcionChange('esServicio')} 
+                                />
+                                Este producto es servicio (sin stock)
+                            </label>
+                            <label className="checkbox-label">
+                                <input 
+                                    type="checkbox" 
+                                    checked={opciones.esKit} 
+                                    onChange={() => handleOpcionChange('esKit')} 
+                                />
+                                Este producto es un Kit (paquete escolar)
+                            </label>
+                            <label className="checkbox-label">
+                                <input 
+                                    type="checkbox" 
+                                    checked={opciones.aGranel} 
+                                    onChange={() => handleOpcionChange('aGranel')} 
+                                />
+                                Se vende a granel (permite decimales)
+                            </label>
+                            <label className="checkbox-label">
+                                <input 
+                                    type="checkbox" 
+                                    checked={opciones.noInventariado} 
+                                    onChange={() => handleOpcionChange('noInventariado')} 
+                                />
+                                Producto no inventariado (venta libre)
+                            </label>
                         </div>
                     </div>
 
@@ -653,46 +1306,140 @@ export default function GestionProductos() {
                                     <div className="form-group full-width"><label>Cód. de Barras:</label><input type="text" name="codigoBarras" value={datosForm.codigoBarras} onChange={handleInputChange} required /></div>
                                     <div className="form-group full-width"><label>Nombre:</label><input type="text" name="nombre" value={datosForm.nombre} onChange={handleInputChange} required /></div>
                                     
-                                    <div className="form-group full-width locacion-group">
-                                        <label>Locación (Anaquel/Fila/Caja):</label>
-                                        <div className="select-with-btn">
-                                            <input type="text" name="locacion" value={datosForm.locacion} onChange={handleInputChange} placeholder="Ej. Pasillo 3, Nivel 2" />
-                                            <label className="btn-add-quick" style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }} title="Subir foto de la locación">
-                                                📷
-                                                <input
-                                                    type="file"
-                                                    accept="image/*"
-                                                    style={{ display: 'none' }}
-                                                    onChange={(e) => handleImagenChange(e, 'imagenLocacion')}
-                                                />
-                                            </label>
-                                            {datosForm.imagenLocacion && (
-                                                <button type="button" className="btn-secondary" style={{ padding: '0 10px', height: '38px' }} onClick={() => setImagenAmpliada(datosForm.imagenLocacion)}>
-                                                    👁️ Ver Foto
-                                                </button>
-                                            )}
+                                    {/* Si es servicio, se oculta por completo el campo de locación[cite: 24, 30] */}
+                                    {!opciones.esServicio && (
+                                        <div className="form-group full-width locacion-group">
+                                            <label>Locación (Anaquel/Fila/Caja):</label>
+                                            <div className="select-with-btn">
+                                                <input type="text" name="locacion" value={datosForm.locacion} onChange={handleInputChange} placeholder="Ej. Pasillo 3, Nivel 2" />
+                                                <label className="btn-add-quick" style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }} title="Subir foto de la locación">
+                                                    📷
+                                                    <input
+                                                        type="file"
+                                                        accept="image/*"
+                                                        style={{ display: 'none' }}
+                                                        onChange={(e) => handleImagenChange(e, 'imagenLocacion')}
+                                                    />
+                                                </label>
+                                                {datosForm.imagenLocacion && (
+                                                    <button type="button" className="btn-secondary" style={{ padding: '0 10px', height: '38px' }} onClick={() => setImagenAmpliada(datosForm.imagenLocacion)}>
+                                                        👁️ Ver Foto
+                                                    </button>
+                                                )}
+                                            </div>
                                         </div>
-                                    </div>
+                                    )}
 
                                     <div className="form-group"><label>Clave/Unidad:</label><input type="text" name="claveUnidad" value={datosForm.claveUnidad} onChange={handleInputChange} /></div>
                                     <div className="form-group"><label>Atributo (Color/Talla):</label><input type="text" name="atributoColor" value={datosForm.atributoColor} onChange={handleInputChange} /></div>
                                     <div className="form-group"><label>Departamento:</label><div className="select-with-btn"><select name="departamento" value={datosForm.departamento} onChange={handleInputChange}><option value="">-- Seleccionar --</option>{departamentos.map((d) => (<option key={d.id} value={d.id}>{d.nombre}</option>))}</select><button type="button" className="btn-add-quick" onClick={() => setModalTipo('departamento')}>+</button></div></div>
                                     <div className="form-group"><label>Categoría:</label><div className="select-with-btn"><select name="categoria" value={datosForm.categoria} onChange={handleInputChange}><option value="">-- Seleccionar --</option>{categorias.map((c) => (<option key={c.id} value={c.id}>{c.nombre}</option>))}</select><button type="button" className="btn-add-quick" onClick={() => setModalTipo('categoria')}>+</button></div></div>
-                                    <div className="form-group full-width"><label>Proveedor:</label><div className="select-with-btn"><select name="proveedor" value={datosForm.proveedor} onChange={handleInputChange}><option value="">-- Seleccionar Proveedor --</option>{proveedores.map((p) => (<option key={p.id} value={p.id}>{p.nombre}</option>))}</select><button type="button" className="btn-add-quick" onClick={() => setModalTipo('proveedor')}>+</button></div></div>
+                                    <div className="form-group full-width"><label>Proveedor Habitual:</label><div className="select-with-btn"><select name="proveedor" value={datosForm.proveedor} onChange={handleInputChange}><option value="">-- Seleccionar Proveedor --</option>{proveedores.map((p) => (<option key={p.id} value={p.id}>{p.nombre}</option>))}</select><button type="button" className="btn-add-quick" onClick={() => setModalTipo('proveedor')}>+</button></div></div>
                                 </div>
                             ) : (
                                 <div className="gp-form-grid">
-                                    <div className="form-group"><label>Costo por Paquete ($):</label><input type="number" step="0.01" name="costoPaquete" value={datosForm.costoPaquete} onChange={handlePrecioChange} /></div>
-                                    <div className="form-group"><label>Pzs por Paquete:</label><input type="number" name="piezasPorPaquete" value={datosForm.piezasPorPaquete} onChange={handlePrecioChange} /></div>
-                                    <div className="form-group"><label>Costo Unitario ($):</label><input type="number" step="0.01" name="costo" value={datosForm.costo} onChange={handlePrecioChange} /></div>
-                                    <div className="form-group"><label>Ganancia Deseada (%):</label><input type="number" step="0.1" name="ganancia" value={datosForm.ganancia} onChange={handlePrecioChange} /></div>
-                                    <div className="form-group"><label>Precio Venta Pza ($):</label><input type="number" step="0.01" name="precioVenta" value={datosForm.precioVenta} onChange={handlePrecioChange} /></div>
-                                    <div className="form-group"><label>Precio Venta Paquete ($): <small style={{ fontWeight: 'normal', color: '#666' }}>(Opcional)</small></label><input type="number" step="0.01" name="precioVentaPaquete" value={datosForm.precioVentaPaquete} onChange={handleInputChange} /></div>
-                                    <div className="form-group"><label>Stock Inicial (Pzs totales):</label><input type="number" name="invActual" value={datosForm.invActual} onChange={handleInputChange} /></div>
-                                    <div className="form-group"><label>Equivalencia en Paquetes:</label><div style={{ padding: '8px 12px', background: '#eef2ff', borderRadius: '4px', color: '#1e40af', fontWeight: 'bold', fontSize: '0.9rem' }}>{paquetesCompletos} Paq. {piezasSueltas > 0 ? `+ ${piezasSueltas} pza(s)` : ''}</div></div>
-                                    <div className="form-group"><label>Inventario Mínimo (Pzs):</label><input type="number" name="invMinimo" value={datosForm.invMinimo} onChange={handleInputChange} /></div>
-                                    <div className="form-group"><label>Puntos de Lealtad:</label><input type="number" name="puntosLealtad" value={datosForm.puntosLealtad} onChange={handleInputChange} /></div>
-                                    <div className="form-group full-width"><label>Nota / Detalles del Paquete:</label><input type="text" name="notaPaquete" value={datosForm.notaPaquete} onChange={handleInputChange} /></div>
+                                    {opciones.esServicio ? (
+                                        /* VISTA LIMPIA PARA SERVICIOS[cite: 24] */
+                                        <>
+                                            <div className="form-group full-width" style={{ background: '#eff6ff', padding: '10px 14px', borderRadius: '6px', color: '#1e40af', fontSize: '0.85rem' }}>
+                                                ℹ️ <strong>Modo Servicio:</strong> No requiere inventario, empaques ni locación física. Solo define el precio al público y el costo de tus insumos si aplica.
+                                            </div>
+                                            <div className="form-group">
+                                                <label>Precio al Público ($):</label>
+                                                <input 
+                                                    type="number" 
+                                                    step="0.10" 
+                                                    name="precioVenta" 
+                                                    value={datosForm.precioVenta} 
+                                                    onChange={handlePrecioChange} 
+                                                    placeholder="Ej. 1.00" 
+                                                    required 
+                                                />
+                                            </div>
+                                            <div className="form-group">
+                                                <label>Costo Estimado de Insumo ($): <small style={{ fontWeight: 'normal', color: '#666' }}>(Opcional)</small></label>
+                                                <input 
+                                                    type="number" 
+                                                    step="0.05" 
+                                                    name="costo" 
+                                                    value={datosForm.costo} 
+                                                    onChange={handlePrecioChange} 
+                                                    placeholder="Ej. 0.30" 
+                                                />
+                                            </div>
+                                            <div className="form-group">
+                                                <label>Ganancia Estimada (%):</label>
+                                                <input 
+                                                    type="number" 
+                                                    step="0.1" 
+                                                    name="ganancia" 
+                                                    value={datosForm.ganancia} 
+                                                    onChange={handlePrecioChange} 
+                                                />
+                                            </div>
+                                            <div className="form-group">
+                                                <label>Puntos de Lealtad:</label>
+                                                <input 
+                                                    type="number" 
+                                                    name="puntosLealtad" 
+                                                    value={datosForm.puntosLealtad} 
+                                                    onChange={handleInputChange} 
+                                                    placeholder="0" 
+                                                />
+                                            </div>
+                                        </>
+                                    ) : (
+                                        /* VISTA COMPLETA PARA ARTÍCULOS FÍSICOS */
+                                        <>
+                                            <div className="form-group">
+                                                <label>Fecha de Compra / Entrada:</label>
+                                                <input type="date" name="fechaCompra" value={datosForm.fechaCompra} onChange={handleInputChange} />
+                                            </div>
+                                            <div className="form-group"><label>Costo por Paquete ($):</label><input type="number" step="0.01" name="costoPaquete" value={datosForm.costoPaquete} onChange={handlePrecioChange} /></div>
+                                            <div className="form-group"><label>Pzs por Paquete:</label><input type="number" name="piezasPorPaquete" value={datosForm.piezasPorPaquete} onChange={handlePrecioChange} /></div>
+                                            <div className="form-group"><label>Costo Unitario ($):</label><input type="number" step="0.01" name="costo" value={datosForm.costo} onChange={handlePrecioChange} /></div>
+                                            <div className="form-group"><label>Ganancia Deseada (%):</label><input type="number" step="0.1" name="ganancia" value={datosForm.ganancia} onChange={handlePrecioChange} /></div>
+                                            <div className="form-group"><label>Precio Venta Pza ($):</label><input type="number" step="0.01" name="precioVenta" value={datosForm.precioVenta} onChange={handlePrecioChange} /></div>
+                                            <div className="form-group"><label>Precio Venta Paquete ($): <small style={{ fontWeight: 'normal', color: '#666' }}>(Opcional)</small></label><input type="number" step="0.01" name="precioVentaPaquete" value={datosForm.precioVentaPaquete} onChange={handleInputChange} /></div>
+                                            
+                                            <div className="form-group">
+                                                <label>Stock Inicial (Pzs totales):</label>
+                                                <input 
+                                                    type="number" 
+                                                    name="invActual" 
+                                                    disabled={deshabilitaInventario} 
+                                                    value={deshabilitaInventario ? '0' : datosForm.invActual} 
+                                                    onChange={handleInputChange} 
+                                                />
+                                                {deshabilitaInventario && (
+                                                    <small style={{ color: '#0d6efd', fontStyle: 'italic' }}>
+                                                        Desactivado por ser producto no inventariado.
+                                                    </small>
+                                                )}
+                                            </div>
+
+                                            <div className="form-group">
+                                                <label>Equivalencia en Paquetes:</label>
+                                                <div style={{ padding: '8px 12px', background: deshabilitaInventario ? '#f1f5f9' : '#eef2ff', borderRadius: '4px', color: deshabilitaInventario ? '#64748b' : '#1e40af', fontWeight: 'bold', fontSize: '0.9rem' }}>
+                                                    {deshabilitaInventario ? 'No aplica' : `${paquetesCompletos} Paq. ${piezasSueltas > 0 ? `+ ${piezasSueltas} pza(s)` : ''}`}
+                                                </div>
+                                            </div>
+
+                                            <div className="form-group">
+                                                <label>Inventario Mínimo (Pzs):</label>
+                                                <input 
+                                                    type="number" 
+                                                    name="invMinimo" 
+                                                    disabled={deshabilitaInventario} 
+                                                    value={deshabilitaInventario ? '0' : datosForm.invMinimo} 
+                                                    onChange={handleInputChange} 
+                                                />
+                                            </div>
+
+                                            <div className="form-group"><label>Puntos de Lealtad:</label><input type="number" name="puntosLealtad" value={datosForm.puntosLealtad} onChange={handleInputChange} /></div>
+                                            <div className="form-group full-width"><label>Nota / Detalles del Paquete:</label><input type="text" name="notaPaquete" value={datosForm.notaPaquete} onChange={handleInputChange} /></div>
+                                        </>
+                                    )}
                                 </div>
                             )}
                         </div>

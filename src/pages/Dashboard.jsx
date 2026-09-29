@@ -7,7 +7,10 @@ export default function Dashboard({ cambiarModulo }) {
   const [resumen, setResumen] = useState({
     ventasDia: 0,
     ticketsDia: 0,
-    devoluciones: 0
+    devoluciones: 0,
+    totalEntradas: 0,
+    totalSalidas: 0,
+    dineroCaja: 0
   });
   const [inventarioBajo, setInventarioBajo] = useState([]);
 
@@ -17,9 +20,12 @@ export default function Dashboard({ cambiarModulo }) {
       if (res.ok) {
         const data = await res.json();
         setResumen({
-          ventasDia: data.ventasDia,
-          ticketsDia: data.ticketsDia,
-          devoluciones: data.devoluciones
+          ventasDia: data.ventasDia || 0,
+          ticketsDia: data.ticketsDia || 0,
+          devoluciones: data.devoluciones || 0,
+          totalEntradas: data.totalEntradas || 0,
+          totalSalidas: data.totalSalidas || 0,
+          dineroCaja: data.dineroCaja || 0
         });
         setInventarioBajo(data.inventarioBajo || []);
       }
@@ -56,16 +62,28 @@ export default function Dashboard({ cambiarModulo }) {
         </div>
         <div className="dash-card-grid">
           <div className="dash-stat-card">
+            <span>Efectivo en Caja</span>
+            <h3 style={{ color: '#16a34a' }}>${resumen.dineroCaja.toFixed(2)}</h3>
+          </div>
+          <div className="dash-stat-card">
             <span>Ventas del Día</span>
             <h3>${resumen.ventasDia.toFixed(2)}</h3>
           </div>
           <div className="dash-stat-card">
+            <span>Entradas / Fondo</span>
+            <h3 style={{ color: '#0284c7' }}>+${resumen.totalEntradas.toFixed(2)}</h3>
+          </div>
+          <div className="dash-stat-card">
+            <span>Salidas / Gastos</span>
+            <h3 style={{ color: '#dc2626' }}>-${resumen.totalSalidas.toFixed(2)}</h3>
+          </div>
+          <div className="dash-stat-card">
             <span>Tickets Emitidos</span>
-            <h3 style={{ color: '#2563eb' }}>{resumen.ticketsDia}</h3>
+            <h3 style={{ color: '#6366f1' }}>{resumen.ticketsDia}</h3>
           </div>
           <div className="dash-stat-card">
             <span>Devoluciones</span>
-            <h3 style={{ color: '#dc2626' }}>{resumen.devoluciones}</h3>
+            <h3 style={{ color: '#94a3b8' }}>{resumen.devoluciones}</h3>
           </div>
         </div>
       </div>
@@ -83,9 +101,12 @@ export default function Dashboard({ cambiarModulo }) {
             <button className="dash-btn-quick" onClick={() => cambiarModulo('productos')}>
               📦 [ GESTIÓN Y NUEVO PRODUCTO ]
             </button>
-            <button className="dash-btn-quick" onClick={() => alert('Generando corte de caja del turno...')}>
+            <button className="dash-btn-quick" onClick={() => cambiarModulo('caja')}>
               💵 [ CORTE DE CAJA ]
             </button>
+            <button className="dash-btn-quick" onClick={() => cambiarModulo('reportes')}>
+  💵 [ CORTE DE CAJA / HISTORIAL ]
+</button>
           </div>
         </div>
 

@@ -1,0 +1,133 @@
+.bd-container {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  gap: 14px;
+  padding: 14px;
+  box-sizing: border-box;
+  font-family: inherit;
+  color: #334155;
+  background-color: #f8fafc;
+  overflow-y: auto;
+}
+
+.bd-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background-color: #ffffff;
+  padding: 12px 20px;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+}
+
+.bd-metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 12px;
+}
+
+.bd-metric-card {
+  background-color: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.03);
+}
+
+.bd-metric-card span {
+  font-size: 11px;
+  font-weight: 700;
+  color: #64748b;
+  text-transform: uppercase;
+}
+
+.bd-metric-card strong {
+  font-size: 22px;
+  font-weight: 800;
+  color: #0f172a;
+}
+
+.bd-sections-grid {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr;
+  gap: 14px;
+}
+
+.bd-box {
+  background-color: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.03);
+}
+
+.bd-box h3 {
+  margin: 0;
+  font-size: 15px;
+  color: #0f172a;
+  border-bottom: 2px solid #f1f5f9;
+  padding-bottom: 8px;
+}
+
+.bd-actions-row {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.btn-big-action {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 18px;
+  border-radius: 6px;
+  border: 1px solid #cbd5e1;
+  background-color: #f8fafc;
+  cursor: pointer;
+  font-weight: bold;
+  font-size: 14px;
+  color: #0f172a;
+  transition: all 0.2s;
+  text-align: left;
+}
+
+.btn-big-action:hover {
+  background-color: #e2e8f0;
+  border-color: #94a3b8;
+}
+
+.btn-big-action.primary {
+  background-color: #2563eb;
+  color: #ffffff;
+  border-color: #1d4ed8;
+}
+
+.btn-big-action.primary:hover {
+  background-color: #1d4ed8;
+}
+
+.bd-table-history {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.bd-table-history th {
+  background-color: #f8fafc;
+  padding: 8px 10px;
+  border-bottom: 1px solid #e2e8f0;
+  text-align: left;
+  color: #475569;
+}
+
+.bd-table-history td {
+  padding: 8px 10px;
+  border-bottom: 1px solid #f1f5f9;
+}

@@ -53,28 +53,28 @@
 
 .dash-card-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 15px;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 12px;
 }
 
 .dash-stat-card {
   background-color: #ffffff;
   border: 1px solid #e2e8f0;
   border-radius: 8px;
-  padding: 20px;
+  padding: 16px;
   text-align: center;
   box-shadow: 0 1px 3px rgba(0,0,0,0.04);
 }
 
 .dash-stat-card h3 {
-  font-size: 24px;
+  font-size: 22px;
   font-weight: 800;
   color: #16a34a;
-  margin: 8px 0 0 0;
+  margin: 6px 0 0 0;
 }
 
 .dash-stat-card span {
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 600;
   color: #64748b;
   text-transform: uppercase;

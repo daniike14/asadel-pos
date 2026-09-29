@@ -1,13 +1,48 @@
 import { useState } from "react";
 import PuntoDeVenta from "./pages/PuntoDeVenta";
 import GestionProductos from "./pages/GestionProductos";
-import Dashboard from "./pages/Dashboard"; // 👈 1. Importamos el componente Dashboard
+import Dashboard from "./pages/Dashboard";
+import ReportesHistorial from "./pages/ReportesHistorial";
+import GestionClientes from './pages/GestionClientes';
+import GestionEmpresa from './pages/GestionEmpresa';
+import GestionBaseDatos from './pages/GestionBaseDatos'; // 👈 Importamos Base de Datos
+import Login from './pages/Login';
 import logoAsadel from "./assets/Logo.jpg";
 import "./App.css";
 
+interface UsuarioSesion {
+  id: number;
+  usuario: string;
+  nombre: string;
+  rol: 'admin' | 'cajero';
+}
+
 function App() {
-  // Estado para controlar la pestaña/módulo activo (iniciamos en dashboard)
+  const [usuarioActual, setUsuarioActual] = useState<UsuarioSesion | null>(() => {
+    const sesionGuardada = localStorage.getItem('asadel_usuario_sesion');
+    return sesionGuardada ? JSON.parse(sesionGuardada) : null;
+  });
+
   const [moduloActivo, setModuloActivo] = useState<string>("dashboard");
+
+  const iniciarSesion = (user: UsuarioSesion) => {
+    setUsuarioActual(user);
+    localStorage.setItem('asadel_usuario_sesion', JSON.stringify(user));
+    setModuloActivo(user.rol === 'admin' ? "dashboard" : "caja");
+  };
+
+  const cerrarSesion = () => {
+    if (window.confirm("¿Seguro que deseas cerrar la sesión actual?")) {
+      setUsuarioActual(null);
+      localStorage.removeItem('asadel_usuario_sesion');
+    }
+  };
+
+  if (!usuarioActual) {
+    return <Login alIniciarSesion={iniciarSesion} />;
+  }
+
+  const esAdmin = usuarioActual.rol === 'admin';
 
   return (
     <div className="app-container">
@@ -16,55 +51,126 @@ function App() {
         <div className="sidebar-header">
           <img src={logoAsadel} alt="ASADEL" className="sidebar-logo" />
         </div>
+
+        <div style={{
+          backgroundColor: '#1e293b',
+          padding: '10px 12px',
+          borderRadius: '6px',
+          fontSize: '12px',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '4px'
+        }}>
+          <span style={{ color: '#94a3b8', fontSize: '11px' }}>Sesión activa:</span>
+          <strong style={{ color: '#ffffff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            {usuarioActual.nombre}
+          </strong>
+          <span style={{
+            color: esAdmin ? '#fbbf24' : '#38bdf8',
+            fontWeight: 'bold',
+            fontSize: '11px',
+            textTransform: 'uppercase'
+          }}>
+            {esAdmin ? '⭐ Administrador' : '💼 Cajero'}
+          </span>
+        </div>
+
         <nav className="sidebar-nav">
-          <button
-            className={moduloActivo === "dashboard" ? "active" : ""}
-            onClick={() => setModuloActivo("dashboard")}
-          >
-            Dashboard
-          </button>
+          {esAdmin && (
+            <button
+              className={moduloActivo === "dashboard" ? "active" : ""}
+              onClick={() => setModuloActivo("dashboard")}
+            >
+              Dashboard
+            </button>
+          )}
+
           <button
             className={moduloActivo === "caja" ? "active" : ""}
             onClick={() => setModuloActivo("caja")}
           >
             1. VENTAS (Caja)
           </button>
+
+          {esAdmin && (
+            <button
+              className={moduloActivo === "productos" ? "active" : ""}
+              onClick={() => setModuloActivo("productos")}
+            >
+              2. PRODUCTOS
+            </button>
+          )}
+
+          {esAdmin && (
+            <button
+              className={moduloActivo === "reportes" ? "active" : ""}
+              onClick={() => setModuloActivo("reportes")}
+            >
+              3. REPORTES / HISTORIAL
+            </button>
+          )}
+
+          {esAdmin && (
+            <button
+              className={moduloActivo === "empresa" ? "active" : ""}
+              onClick={() => setModuloActivo("empresa")}
+            >
+              4. EMPRESA
+            </button>
+          )}
+
           <button
-            className={moduloActivo === "productos" ? "active" : ""}
-            onClick={() => setModuloActivo("productos")}
+            className={`nav-btn ${moduloActivo === 'clientes' ? 'active' : ''}`}
+            onClick={() => setModuloActivo('clientes')}
           >
-            2. PRODUCTOS
+            5. CLIENTES Y LEALTAD
           </button>
-          <button
-            className={moduloActivo === "empresa" ? "active" : ""}
-            onClick={() => setModuloActivo("empresa")}
-          >
-            3. EMPRESA
-          </button>
-          <button
-            className={moduloActivo === "usuarios" ? "active" : ""}
-            onClick={() => setModuloActivo("usuarios")}
-          >
-            4. USUARIOS
-          </button>
-          <button
-            className={moduloActivo === "basedatos" ? "active" : ""}
-            onClick={() => setModuloActivo("basedatos")}
-          >
-            5. BASE DE DATOS
-          </button>
+
+          {esAdmin && (
+            <button
+              className={moduloActivo === "basedatos" ? "active" : ""}
+              onClick={() => setModuloActivo("basedatos")}
+            >
+              6. BASE DE DATOS
+            </button>
+          )}
         </nav>
+
+        <button
+          onClick={cerrarSesion}
+          style={{
+            marginTop: 'auto',
+            backgroundColor: '#334155',
+            color: '#f8fafc',
+            border: 'none',
+            padding: '10px',
+            borderRadius: '6px',
+            cursor: 'pointer',
+            fontSize: '12px',
+            fontWeight: 'bold'
+          }}
+        >
+          🚪 Cerrar Sesión
+        </button>
       </aside>
 
       {/* Área Principal de Trabajo */}
       <main className="main-content">
-        {/* 👈 2. Renderizamos el Dashboard y le pasamos la función para cambiar de módulo */}
-        {moduloActivo === "dashboard" && <Dashboard cambiarModulo={setModuloActivo} />}
+        {moduloActivo === "dashboard" && esAdmin && <Dashboard cambiarModulo={setModuloActivo} />}
         {moduloActivo === "caja" && <PuntoDeVenta />}
-        {moduloActivo === "productos" && <GestionProductos />}
-        {moduloActivo === "empresa" && <div>Vista de Empresa (En construcción)</div>}
-        {moduloActivo === "usuarios" && <div>Vista de Usuarios (En construcción)</div>}
-        {moduloActivo === "basedatos" && <div>Vista de Base de Datos (En construcción)</div>}
+        {moduloActivo === "productos" && esAdmin && <GestionProductos />}
+        {moduloActivo === "reportes" && esAdmin && (
+          <ReportesHistorial volverAlDashboard={() => setModuloActivo("dashboard")} />
+        )}
+        {moduloActivo === "empresa" && esAdmin && (
+          <GestionEmpresa volverAlDashboard={() => setModuloActivo("dashboard")} />
+        )}
+        {moduloActivo === 'clientes' && (
+          <GestionClientes volverAlDashboard={() => setModuloActivo(esAdmin ? 'dashboard' : 'caja')} />
+        )}
+        {moduloActivo === "basedatos" && esAdmin && (
+          <GestionBaseDatos volverAlDashboard={() => setModuloActivo("dashboard")} />
+        )}
       </main>
     </div>
   );
