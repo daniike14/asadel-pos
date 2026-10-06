@@ -7,62 +7,65 @@ const path = require('path');
 const app = express();
 app.use(cors());
 
-// Aumentamos el límite del body a 10MB para recibir múltiples imágenes en Base64
+// Límite de 10MB para recibir imágenes en Base64
 app.use(express.json({ limit: '10mb' }));
 
-const db = new sqlite3.Database('./src/database/puntos_de_venta.db', (err) => {
-  if (err) console.error('Error al abrir la base de datos:', err.message);
-  else console.log('✅ Base de datos SQLite conectada correctamente.');
-});
+// Resolver la ruta exacta de la base de datos detectando si server.cjs corre desde src/database o desde la raíz
+const RUTA_DB_ACTUAL = fs.existsSync(path.resolve(__dirname, 'puntos_de_venta.db'))
+  ? path.resolve(__dirname, 'puntos_de_venta.db')
+  : path.resolve(__dirname, 'src/database/puntos_de_venta.db');
 
-// Asegurar existencia de carpeta de respaldos automáticos
-const RUTA_BACKUPS = path.join(__dirname, 'backups');
+const RUTA_DIR_DB = path.dirname(RUTA_DB_ACTUAL);
+if (!fs.existsSync(RUTA_DIR_DB)) {
+  fs.mkdirSync(RUTA_DIR_DB, { recursive: true });
+}
+
+// Carpeta de respaldos en la raíz del proyecto
+const RUTA_RAIZ_PROYECTO = path.resolve(RUTA_DIR_DB, '..', '..');
+const RUTA_BACKUPS = path.resolve(RUTA_RAIZ_PROYECTO, 'backups');
 if (!fs.existsSync(RUTA_BACKUPS)) {
   fs.mkdirSync(RUTA_BACKUPS, { recursive: true });
 }
 
-const RUTA_DB_ACTUAL = path.join(__dirname, 'src', 'database', 'puntos_de_venta.db');
+const db = new sqlite3.Database(RUTA_DB_ACTUAL, (err) => {
+  if (err) console.error('Error al abrir la base de datos:', err.message);
+  else console.log('✅ Base de datos SQLite conectada correctamente en:', RUTA_DB_ACTUAL);
+});
 
 db.serialize(() => {
   db.run(`
-  CREATE TABLE IF NOT EXISTS productos (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    codigoBarras TEXT UNIQUE NOT NULL,
-    nombre TEXT NOT NULL,
-    locacion TEXT,
-    claveUnidad TEXT,
-    atributoColor TEXT,
-    departamento_id INTEGER,
-    categoria_id INTEGER,
-    proveedor_id INTEGER,
-    
-    imagen TEXT, 
-    imagenLocacion TEXT,
-
-    costoPaquete REAL DEFAULT 0,
-    piezasPorPaquete INTEGER DEFAULT 1,
-    precioVentaPaquete REAL DEFAULT 0,
-    notaPaquete TEXT,
-    
-    costo REAL DEFAULT 0,
-    precioVenta REAL DEFAULT 0,
-    ganancia REAL DEFAULT 0,
-    
-    invMinimo INTEGER DEFAULT 0,
-    invActual REAL DEFAULT 0,
-    puntosLealtad INTEGER DEFAULT 0,
-    
-    esServicio BOOLEAN DEFAULT 0,
-    esKit BOOLEAN DEFAULT 0,
-    aGranel BOOLEAN DEFAULT 0,
-    noInventariado BOOLEAN DEFAULT 0,
-    fechaCompra TEXT
-  )
-`);
+    CREATE TABLE IF NOT EXISTS productos (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      codigoBarras TEXT UNIQUE NOT NULL,
+      nombre TEXT NOT NULL,
+      locacion TEXT,
+      claveUnidad TEXT,
+      atributoColor TEXT,
+      departamento_id INTEGER,
+      categoria_id INTEGER,
+      proveedor_id INTEGER,
+      imagen TEXT, 
+      imagenLocacion TEXT,
+      costoPaquete REAL DEFAULT 0,
+      piezasPorPaquete INTEGER DEFAULT 1,
+      precioVentaPaquete REAL DEFAULT 0,
+      notaPaquete TEXT,
+      costo REAL DEFAULT 0,
+      precioVenta REAL DEFAULT 0,
+      ganancia REAL DEFAULT 0,
+      invMinimo INTEGER DEFAULT 0,
+      invActual REAL DEFAULT 0,
+      puntosLealtad INTEGER DEFAULT 0,
+      esServicio BOOLEAN DEFAULT 0,
+      esKit BOOLEAN DEFAULT 0,
+      aGranel BOOLEAN DEFAULT 0,
+      noInventariado BOOLEAN DEFAULT 0,
+      fechaCompra TEXT
+    )
+  `);
 
   db.run(`ALTER TABLE productos ADD COLUMN fechaCompra TEXT`, () => {});
 
-  // TABLA DE HISTORIAL DE COMPRAS Y COSTOS POR PRODUCTO
   db.run(`
     CREATE TABLE IF NOT EXISTS historial_costos (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -78,7 +81,6 @@ db.serialize(() => {
     )
   `);
 
-  // TABLA DE ENCARGOS Y COMPRAS MANUALES / NOVEDADES
   db.run(`
     CREATE TABLE IF NOT EXISTS compras_manuales (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -150,7 +152,6 @@ db.serialize(() => {
 
   db.run(`ALTER TABLE detalle_ventas ADD COLUMN piezas_por_paquete REAL DEFAULT 1`, () => {});
 
-  // TABLA DE ENTRADAS Y SALIDAS DE DINERO EN CAJA
   db.run(`
     CREATE TABLE IF NOT EXISTS movimientos_caja (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -162,7 +163,6 @@ db.serialize(() => {
     )
   `);
 
-  // TABLA DE HISTORIAL DE CORTES DE CAJA / CIERRES DE TURNO
   db.run(`
     CREATE TABLE IF NOT EXISTS cortes_caja (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -223,7 +223,6 @@ db.serialize(() => {
     )
   `);
 
-  // TABLA DE CLIENTES Y MONEDERO DE PUNTOS DE LEALTAD
   db.run(`
     CREATE TABLE IF NOT EXISTS clientes (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -234,7 +233,6 @@ db.serialize(() => {
     )
   `);
 
-  // TABLA DE DATOS GENERALES DE LA EMPRESA / SUCURSAL
   db.run(`
     CREATE TABLE IF NOT EXISTS empresa_datos (
       id INTEGER PRIMARY KEY CHECK (id = 1),
@@ -258,7 +256,6 @@ db.serialize(() => {
     });
   });
 
-  // TABLA DE USUARIOS DEL SISTEMA (ADMINISTRADOR Y CAJEROS)
   db.run(`
     CREATE TABLE IF NOT EXISTS usuarios (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -280,7 +277,6 @@ db.serialize(() => {
     });
   });
 
-  // TABLA DE CONFIGURACIÓN DE REGLAS DE LEALTAD
   db.run(`
     CREATE TABLE IF NOT EXISTS configuracion_lealtad (
       clave TEXT PRIMARY KEY,
@@ -298,7 +294,6 @@ db.serialize(() => {
     });
   });
 
-  // TABLA DE CONFIGURACIÓN DE RESPALDOS
   db.run(`
     CREATE TABLE IF NOT EXISTS configuracion_respaldos (
       clave TEXT PRIMARY KEY,
@@ -314,61 +309,22 @@ db.serialize(() => {
       }
     });
   });
-
-  db.get('SELECT COUNT(*) as count FROM productos', (err, row) => {
-    if (row && row.count === 0) {
-      const stmt = db.prepare(`
-        INSERT INTO productos (codigoBarras, nombre, precioVenta, locacion, invActual, piezasPorPaquete, fechaCompra)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-      `);
-      stmt.run('75010001', 'Cuaderno Profesional Raya (100 Hojas)', 25.00, 'Anaquel A-F5', 340, 34, '2026-09-01');
-      stmt.run('75010002', 'Cuaderno Profesional Cuadro Chico (100 Hojas)', 25.00, 'Anaquel A-F6', 45, 34, '2026-09-05');
-      stmt.run('75010003', 'Cuaderno Forma Italiana Doblado', 18.00, 'Anaquel A-F2', 12, 20, '2026-09-10');
-      stmt.finalize();
-    }
-  });
-
-  db.get('SELECT COUNT(*) as count FROM departamentos', (err, row) => {
-    if (row && row.count === 0) {
-      const stmt = db.prepare('INSERT INTO departamentos (nombre) VALUES (?)');
-      stmt.run('Papelería Escolar');
-      stmt.run('Oficina y Escritorio');
-      stmt.run('Arte y Dibujo');
-      stmt.finalize();
-    }
-  });
-
-  db.get('SELECT COUNT(*) as count FROM categorias', (err, row) => {
-    if (row && row.count === 0) {
-      const stmt = db.prepare('INSERT INTO categorias (nombre) VALUES (?)');
-      stmt.run('Cuadernos y Libretas');
-      stmt.run('Escritura y Corrección');
-      stmt.run('Hojas y Papel');
-      stmt.finalize();
-    }
-  });
-
-  db.get('SELECT COUNT(*) as count FROM proveedores', (err, row) => {
-    if (row && row.count === 0) {
-      const stmt = db.prepare('INSERT INTO proveedores (nombre, telefono, contacto) VALUES (?, ?, ?)');
-      stmt.run('Tony Papelerías', '5551234567', 'Sucursal Centro');
-      stmt.run('Scribe México', '5559876543', 'Ventas Directas');
-      stmt.run('Bic México', '5555551122', 'Atención Distribuidores');
-      stmt.finalize();
-    }
-  });
 });
 
-// Rutina de respaldo automático en disco
+// Rutina de respaldo en disco
 const ejecutarRespaldoEnDisco = () => {
   try {
+    if (!fs.existsSync(RUTA_DB_ACTUAL)) {
+      console.error('❌ No se encontró la base de datos en:', RUTA_DB_ACTUAL);
+      return;
+    }
     const fechaStr = new Date().toISOString().replace(/[:.]/g, '-');
     const destino = path.join(RUTA_BACKUPS, `respaldo_asadel_${fechaStr}.db`);
     fs.copyFileSync(RUTA_DB_ACTUAL, destino);
     db.run(`UPDATE configuracion_respaldos SET valor = ? WHERE clave = 'ultimo_respaldo'`, [new Date().toISOString()]);
-    console.log(`💾 Respaldo automático generado en: ${destino}`);
+    console.log(`💾 Respaldo generado con éxito en: ${destino}`);
   } catch (err) {
-    console.error('Error al generar respaldo automático:', err);
+    console.error('Error al generar respaldo:', err);
   }
 };
 
@@ -394,6 +350,7 @@ setInterval(() => {
   });
 }, 1000 * 60 * 60);
 
+// --- PRODUCTOS ---
 app.get('/api/productos', (req, res) => {
   const sql = `
     SELECT 
@@ -407,7 +364,6 @@ app.get('/api/productos', (req, res) => {
     LEFT JOIN proveedores pr ON p.proveedor_id = pr.id
     ORDER BY p.id DESC
   `;
-
   db.all(sql, [], (err, rows) => {
     if (err) return res.status(500).json({ error: err.message });
     res.json(rows);
@@ -439,7 +395,6 @@ app.post('/api/productos', (req, res) => {
   `;
 
   const fechaCompraFinal = fechaCompra || new Date().toISOString().split('T')[0];
-
   const params = [
     codigoBarras || '', nombre, locacion || '', claveUnidad || 'PZA', atributoColor || '',
     departamento_id || departamento || null,
@@ -456,11 +411,7 @@ app.post('/api/productos', (req, res) => {
   ];
 
   db.run(sql, params, function (err) {
-    if (err) {
-      console.error(err);
-      return res.status(400).json({ error: err.message || 'Error al insertar producto.' });
-    }
-
+    if (err) return res.status(400).json({ error: err.message || 'Error al insertar producto.' });
     const nuevoId = this.lastID;
 
     if (parseFloat(costo) > 0 || parseFloat(costoPaquete) > 0) {
@@ -471,7 +422,7 @@ app.post('/api/productos', (req, res) => {
           nuevoId,
           'Alta Inicial',
           parseFloat(costoPaquete) || 0,
-          parseInt(piezasPorPaquete) || 1,
+          parseInt(piezasPorPaquete, 10) || 1,
           parseFloat(costo) || 0,
           esServicio || noInventariado ? 0 : (parseFloat(invActual) || 0),
           'Costo inicial registrado al crear el producto',
@@ -479,7 +430,6 @@ app.post('/api/productos', (req, res) => {
         ]
       );
     }
-
     res.json({ id: nuevoId, mensaje: 'Producto guardado correctamente' });
   });
 });
@@ -527,20 +477,14 @@ app.put('/api/productos/:id', (req, res) => {
   ];
 
   db.run(sql, params, function (err) {
-    if (err) {
-      console.error(err);
-      return res.status(400).json({ error: err.message || 'Error al actualizar producto.' });
-    }
-    if (this.changes === 0) {
-      return res.status(404).json({ error: 'Producto no encontrado' });
-    }
+    if (err) return res.status(400).json({ error: err.message || 'Error al actualizar producto.' });
+    if (this.changes === 0) return res.status(404).json({ error: 'Producto no encontrado' });
     res.json({ mensaje: 'Producto actualizado exitosamente' });
   });
 });
 
 app.delete('/api/productos/:id', (req, res) => {
   const { id } = req.params;
-  
   db.run('DELETE FROM historial_costos WHERE producto_id = ?', [id], () => {
     db.run('DELETE FROM productos WHERE id = ?', [id], function (err) {
       if (err) return res.status(500).json({ error: 'Error al intentar eliminar el producto.' });
@@ -552,9 +496,7 @@ app.delete('/api/productos/:id', (req, res) => {
 // --- HISTORIAL DE COSTOS ---
 app.get('/api/productos/:id/historial-costos', (req, res) => {
   const { id } = req.params;
-  const sql = `SELECT * FROM historial_costos WHERE producto_id = ? ORDER BY id DESC`;
-
-  db.all(sql, [id], (err, rows) => {
+  db.all(`SELECT * FROM historial_costos WHERE producto_id = ? ORDER BY id DESC`, [id], (err, rows) => {
     if (err) return res.status(500).json({ error: err.message });
     res.json(rows);
   });
@@ -581,7 +523,7 @@ app.post('/api/productos/:id/registrar-compra', (req, res) => {
   const cantCompradaNum = parseFloat(cantidadComprada) || 0;
   const costoUniNum = parseFloat(costoUnitario) || 0;
   const costoPaqNum = parseFloat(costoPaquete) || 0;
-  const pzsPaqNum = parseInt(piezasPorPaquete) || 1;
+  const pzsPaqNum = parseInt(piezasPorPaquete, 10) || 1;
   const fechaFinal = fechaCompra || new Date().toISOString().split('T')[0];
 
   const sqlHistorial = `
@@ -651,10 +593,7 @@ app.delete('/api/promociones/:id', (req, res) => {
 // --- MOVIMIENTOS DE CAJA ---
 app.post('/api/movimientos-caja', (req, res) => {
   const { tipo, monto, motivo, cajero } = req.body;
-
-  if (!tipo || !monto || !motivo) {
-    return res.status(400).json({ error: 'Faltan campos obligatorios para registrar el movimiento.' });
-  }
+  if (!tipo || !monto || !motivo) return res.status(400).json({ error: 'Faltan campos obligatorios.' });
 
   const sql = `INSERT INTO movimientos_caja (tipo, monto, motivo, cajero) VALUES (?, ?, ?, ?)`;
   db.run(sql, [tipo, parseFloat(monto) || 0, motivo.trim(), cajero || 'Turno 1'], function (err) {
@@ -691,7 +630,6 @@ app.get('/api/corte-caja/balance-actual', (req, res) => {
 
   db.get(sqlVentas, [], (errV, rowV) => {
     if (errV) return res.status(500).json({ error: errV.message });
-
     db.get(sqlMovs, [], (errM, rowM) => {
       if (errM) return res.status(500).json({ error: errM.message });
 
@@ -757,7 +695,7 @@ app.post('/api/corte-caja', (req, res) => {
   );
 });
 
-// Guardar Venta (Con validación estricta de inventario soportando paquetes y piezas sueltas)
+// --- VENTAS ---
 app.post('/api/ventas', (req, res) => {
   const {
     folio,
@@ -777,7 +715,6 @@ app.post('/api/ventas', (req, res) => {
     return res.status(400).json({ error: 'No se puede procesar una venta sin artículos.' });
   }
 
-  // Agrupar la demanda física real requerida por ID de producto base
   const demandaPorProducto = {};
   items.forEach((item) => {
     if (!item.esServicio && !item.noInventariado && item.id > 0 && !item.esKit) {
@@ -846,8 +783,8 @@ app.post('/api/ventas', (req, res) => {
         stmtStock.finalize();
 
         if (cliente_id) {
-          const ganados = parseInt(puntos_ganados) || 0;
-          const canjeados = parseInt(puntos_canjeados) || 0;
+          const ganados = parseInt(puntos_ganados, 10) || 0;
+          const canjeados = parseInt(puntos_canjeados, 10) || 0;
           const delta = ganados - canjeados;
 
           db.run(
@@ -883,7 +820,6 @@ app.post('/api/ventas', (req, res) => {
   }
 });
 
-// CANCELAR / ANULAR VENTA (Devuelve existencias multiplicadas por piezas_por_paquete y revierte puntos de lealtad)
 app.post('/api/ventas/:id/cancelar', (req, res) => {
   const { id } = req.params;
 
@@ -896,10 +832,8 @@ app.post('/api/ventas/:id/cancelar', (req, res) => {
 
       db.serialize(() => {
         db.run('BEGIN TRANSACTION');
-
         db.run(`UPDATE ventas SET estado = 'cancelada' WHERE id = ?`, [id]);
 
-        // Regresar el inventario al stock físico considerando si fue vendido en paquete
         const stmtStock = db.prepare(`
           UPDATE productos 
           SET invActual = invActual + ? 
@@ -915,10 +849,9 @@ app.post('/api/ventas/:id/cancelar', (req, res) => {
         });
         stmtStock.finalize();
 
-        // Revertir puntos si hubo cliente registrado
         if (venta.cliente_id) {
-          const ganados = parseInt(venta.puntos_ganados) || 0;
-          const canjeados = parseInt(venta.puntos_canjeados) || 0;
+          const ganados = parseInt(venta.puntos_ganados, 10) || 0;
+          const canjeados = parseInt(venta.puntos_canjeados, 10) || 0;
           const delta = canjeados - ganados;
 
           db.run(
@@ -939,6 +872,7 @@ app.post('/api/ventas/:id/cancelar', (req, res) => {
   });
 });
 
+// --- KITS ---
 app.post('/api/kits', (req, res) => {
   const { codigo, nombre, precio, items } = req.body;
 
@@ -956,6 +890,39 @@ app.post('/api/kits', (req, res) => {
   });
 });
 
+app.get('/api/kits', (req, res) => {
+  db.all(`SELECT * FROM kits ORDER BY id DESC`, [], (err, rowsKits) => {
+    if (err) return res.status(500).json({ error: err.message });
+    if (rowsKits.length === 0) return res.json([]);
+
+    const sqlDetalles = `
+      SELECT kd.*, p.nombre, p.codigoBarras, p.precioVenta, p.invActual
+      FROM kit_detalles kd
+      JOIN productos p ON kd.producto_id = p.id
+    `;
+
+    db.all(sqlDetalles, [], (errDet, rowsDet) => {
+      if (errDet) return res.status(500).json({ error: errDet.message });
+      const kitsConComponentes = rowsKits.map((k) => ({
+        ...k,
+        items: rowsDet.filter((d) => d.kit_id === k.id)
+      }));
+      res.json(kitsConComponentes);
+    });
+  });
+});
+
+app.delete('/api/kits/:id', (req, res) => {
+  const { id } = req.params;
+  db.run('DELETE FROM kit_detalles WHERE kit_id = ?', [id], () => {
+    db.run('DELETE FROM kits WHERE id = ?', [id], function (err) {
+      if (err) return res.status(500).json({ error: err.message });
+      res.json({ mensaje: 'Kit eliminado correctamente' });
+    });
+  });
+});
+
+// --- DEPARTAMENTOS ---
 app.get('/api/departamentos', (req, res) => {
   db.all('SELECT * FROM departamentos ORDER BY nombre ASC', [], (err, rows) => {
     if (err) return res.status(500).json({ error: err.message });
@@ -971,6 +938,32 @@ app.post('/api/departamentos', (req, res) => {
   });
 });
 
+app.put('/api/departamentos/:id', (req, res) => {
+  const { id } = req.params;
+  const { nombre } = req.body;
+  if (!nombre || !nombre.trim()) return res.status(400).json({ error: 'El nombre es obligatorio.' });
+
+  db.run('UPDATE departamentos SET nombre = ? WHERE id = ?', [nombre.trim(), id], function (err) {
+    if (err) return res.status(400).json({ error: 'El departamento ya existe o hay un error.' });
+    if (this.changes === 0) return res.status(404).json({ error: 'Departamento no encontrado.' });
+    res.json({ mensaje: 'Departamento actualizado correctamente.' });
+  });
+});
+
+app.delete('/api/departamentos/:id', (req, res) => {
+  const { id } = req.params;
+  db.get('SELECT COUNT(*) as count FROM productos WHERE departamento_id = ?', [id], (err, row) => {
+    if (row && row.count > 0) {
+      return res.status(400).json({ error: `No se puede eliminar: hay ${row.count} producto(s) asignados a este departamento.` });
+    }
+    db.run('DELETE FROM departamentos WHERE id = ?', [id], function (errDel) {
+      if (errDel) return res.status(500).json({ error: 'Error al eliminar departamento.' });
+      res.json({ mensaje: 'Departamento eliminado correctamente.' });
+    });
+  });
+});
+
+// --- CATEGORÍAS ---
 app.get('/api/categorias', (req, res) => {
   db.all('SELECT * FROM categorias ORDER BY nombre ASC', [], (err, rows) => {
     if (err) return res.status(500).json({ error: err.message });
@@ -986,6 +979,32 @@ app.post('/api/categorias', (req, res) => {
   });
 });
 
+app.put('/api/categorias/:id', (req, res) => {
+  const { id } = req.params;
+  const { nombre } = req.body;
+  if (!nombre || !nombre.trim()) return res.status(400).json({ error: 'El nombre es obligatorio.' });
+
+  db.run('UPDATE categorias SET nombre = ? WHERE id = ?', [nombre.trim(), id], function (err) {
+    if (err) return res.status(400).json({ error: 'La categoría ya existe o hay un error.' });
+    if (this.changes === 0) return res.status(404).json({ error: 'Categoría no encontrada.' });
+    res.json({ mensaje: 'Categoría actualizada correctamente.' });
+  });
+});
+
+app.delete('/api/categorias/:id', (req, res) => {
+  const { id } = req.params;
+  db.get('SELECT COUNT(*) as count FROM productos WHERE categoria_id = ?', [id], (err, row) => {
+    if (row && row.count > 0) {
+      return res.status(400).json({ error: `No se puede eliminar: hay ${row.count} producto(s) asignados a esta categoría.` });
+    }
+    db.run('DELETE FROM categorias WHERE id = ?', [id], function (errDel) {
+      if (errDel) return res.status(500).json({ error: 'Error al eliminar categoría.' });
+      res.json({ mensaje: 'Categoría eliminada correctamente.' });
+    });
+  });
+});
+
+// --- PROVEEDORES ---
 app.get('/api/proveedores', (req, res) => {
   db.all('SELECT * FROM proveedores ORDER BY nombre ASC', [], (err, rows) => {
     if (err) return res.status(500).json({ error: err.message });
@@ -995,14 +1014,35 @@ app.get('/api/proveedores', (req, res) => {
 
 app.post('/api/proveedores', (req, res) => {
   const { nombre, telefono, contacto } = req.body;
-  db.run(
-    'INSERT INTO proveedores (nombre, telefono, contacto) VALUES (?, ?, ?)',
-    [nombre, telefono, contacto],
-    function (err) {
-      if (err) return res.status(400).json({ error: err.message });
-      res.json({ id: this.lastID, nombre, telefono, contacto });
+  db.run('INSERT INTO proveedores (nombre, telefono, contacto) VALUES (?, ?, ?)', [nombre, telefono, contacto], function (err) {
+    if (err) return res.status(400).json({ error: err.message });
+    res.json({ id: this.lastID, nombre, telefono, contacto });
+  });
+});
+
+app.put('/api/proveedores/:id', (req, res) => {
+  const { id } = req.params;
+  const { nombre, telefono, contacto } = req.body;
+  if (!nombre || !nombre.trim()) return res.status(400).json({ error: 'El nombre es obligatorio.' });
+
+  db.run('UPDATE proveedores SET nombre = ?, telefono = ?, contacto = ? WHERE id = ?', [nombre.trim(), telefono || '', contacto || '', id], function (err) {
+    if (err) return res.status(400).json({ error: 'El proveedor ya existe o hay un error.' });
+    if (this.changes === 0) return res.status(404).json({ error: 'Proveedor no encontrado.' });
+    res.json({ mensaje: 'Proveedor actualizado correctamente.' });
+  });
+});
+
+app.delete('/api/proveedores/:id', (req, res) => {
+  const { id } = req.params;
+  db.get('SELECT COUNT(*) as count FROM productos WHERE proveedor_id = ?', [id], (err, row) => {
+    if (row && row.count > 0) {
+      return res.status(400).json({ error: `No se puede eliminar: hay ${row.count} producto(s) asignados a este proveedor.` });
     }
-  );
+    db.run('DELETE FROM proveedores WHERE id = ?', [id], function (errDel) {
+      if (errDel) return res.status(500).json({ error: 'Error al eliminar proveedor.' });
+      res.json({ mensaje: 'Proveedor eliminado correctamente.' });
+    });
+  });
 });
 
 // --- CLIENTES ---
@@ -1017,17 +1057,32 @@ app.get('/api/clientes/buscar', (req, res) => {
   });
 });
 
+app.get('/api/clientes', (req, res) => {
+  const sql = `
+    SELECT 
+      c.*,
+      COUNT(v.id) AS total_compras,
+      COALESCE(SUM(CASE WHEN v.estado != 'cancelada' THEN v.total ELSE 0 END), 0) AS total_gastado
+    FROM clientes c
+    LEFT JOIN ventas v ON c.id = v.cliente_id
+    GROUP BY c.id
+    ORDER BY c.puntos_acumulados DESC, c.id DESC
+  `;
+  db.all(sql, [], (err, rows) => {
+    if (err) return res.status(500).json({ error: err.message });
+    res.json(rows);
+  });
+});
+
 app.post('/api/clientes', (req, res) => {
   const { nombre, telefono } = req.body;
-  if (!nombre || !telefono) {
-    return res.status(400).json({ error: 'Nombre y teléfono son obligatorios.' });
-  }
+  if (!nombre || !telefono) return res.status(400).json({ error: 'Nombre y teléfono son obligatorios.' });
 
   const sql = `INSERT INTO clientes (nombre, telefono, puntos_acumulados) VALUES (?, ?, 0)`;
   db.run(sql, [nombre.trim(), telefono.trim()], function (err) {
     if (err) {
       if (err.message.includes('UNIQUE')) {
-        return res.status(400).json({ error: 'Ya existe un cliente registrado con ese número de teléfono.' });
+        return res.status(400).json({ error: 'Ya existe un cliente con ese teléfono.' });
       }
       return res.status(500).json({ error: err.message });
     }
@@ -1035,14 +1090,48 @@ app.post('/api/clientes', (req, res) => {
   });
 });
 
-// --- CONFIGURACIÓN DE LEALTAD ---
+app.put('/api/clientes/:id', (req, res) => {
+  const { id } = req.params;
+  const { nombre, telefono, puntos_acumulados } = req.body;
+  if (!nombre || !telefono) return res.status(400).json({ error: 'Nombre y teléfono son obligatorios.' });
+
+  const sql = `UPDATE clientes SET nombre = ?, telefono = ?, puntos_acumulados = ? WHERE id = ?`;
+  db.run(sql, [nombre.trim(), telefono.trim(), parseInt(puntos_acumulados, 10) || 0, id], function (err) {
+    if (err) return res.status(500).json({ error: err.message });
+    if (this.changes === 0) return res.status(404).json({ error: 'Cliente no encontrado.' });
+    res.json({ mensaje: 'Cliente actualizado correctamente.' });
+  });
+});
+
+app.delete('/api/clientes/:id', (req, res) => {
+  const { id } = req.params;
+  db.run('DELETE FROM clientes WHERE id = ?', [id], function (err) {
+    if (err) return res.status(500).json({ error: err.message });
+    if (this.changes === 0) return res.status(404).json({ error: 'Cliente no encontrado.' });
+    res.json({ mensaje: 'Cliente eliminado correctamente.' });
+  });
+});
+
+app.get('/api/clientes/:id/historial', (req, res) => {
+  const { id } = req.params;
+  const sql = `
+    SELECT id, folio, fecha_hora, total, metodo_pago, puntos_ganados, puntos_canjeados, estado
+    FROM ventas 
+    WHERE cliente_id = ? 
+    ORDER BY id DESC
+  `;
+  db.all(sql, [id], (err, rows) => {
+    if (err) return res.status(500).json({ error: err.message });
+    res.json(rows);
+  });
+});
+
+// --- LEALTAD ---
 app.get('/api/configuracion/lealtad', (req, res) => {
   db.all('SELECT * FROM configuracion_lealtad', [], (err, rows) => {
     if (err) return res.status(500).json({ error: err.message });
     const config = {};
-    rows.forEach((r) => {
-      config[r.clave] = r.valor;
-    });
+    rows.forEach((r) => { config[r.clave] = r.valor; });
     res.json({
       valor_punto_pesos: parseFloat(config.valor_punto_pesos) || 1.0,
       minimo_puntos_canje: parseInt(config.minimo_puntos_canje, 10) || 0,
@@ -1053,7 +1142,6 @@ app.get('/api/configuracion/lealtad', (req, res) => {
 
 app.post('/api/configuracion/lealtad', (req, res) => {
   const { valor_punto_pesos, minimo_puntos_canje, porcentaje_max_descuento } = req.body;
-
   const sql = `
     INSERT INTO configuracion_lealtad (clave, valor)
     VALUES (?, ?)
@@ -1066,12 +1154,113 @@ app.post('/api/configuracion/lealtad', (req, res) => {
     if (minimo_puntos_canje !== undefined) stmt.run('minimo_puntos_canje', String(minimo_puntos_canje));
     if (porcentaje_max_descuento !== undefined) stmt.run('porcentaje_max_descuento', String(porcentaje_max_descuento));
     stmt.finalize();
-
     res.json({ mensaje: 'Reglas de lealtad actualizadas correctamente.' });
   });
 });
 
-// --- DASHBOARD RESUMEN ---
+// --- EMPRESA ---
+app.get('/api/empresa', (req, res) => {
+  db.get('SELECT * FROM empresa_datos WHERE id = 1', [], (err, row) => {
+    if (err) return res.status(500).json({ error: err.message });
+    const datos = row || {};
+    const autoTicket = !(datos.imprimir_ticket_auto === 0 || datos.imprimir_ticket_auto === '0' || datos.imprimir_ticket_auto === false);
+    res.json({ ...datos, imprimir_ticket_auto: autoTicket });
+  });
+});
+
+app.post('/api/empresa', (req, res) => {
+  const { nombre, sucursal, direccion, telefono, mensaje_ticket, logo, imprimir_ticket_auto } = req.body;
+  const autoTicket = (imprimir_ticket_auto === false || imprimir_ticket_auto === 0 || imprimir_ticket_auto === '0') ? 0 : 1;
+
+  const sql = `
+    INSERT INTO empresa_datos (id, nombre, sucursal, direccion, telefono, mensaje_ticket, logo, imprimir_ticket_auto)
+    VALUES (1, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(id) DO UPDATE SET
+      nombre = excluded.nombre,
+      sucursal = excluded.sucursal,
+      direccion = excluded.direccion,
+      telefono = excluded.telefono,
+      mensaje_ticket = excluded.mensaje_ticket,
+      logo = CASE WHEN excluded.logo IS NOT NULL AND excluded.logo != '' THEN excluded.logo ELSE empresa_datos.logo END,
+      imprimir_ticket_auto = excluded.imprimir_ticket_auto
+  `;
+
+  db.run(sql, [nombre || '', sucursal || '', direccion || '', telefono || '', mensaje_ticket || '', logo || null, autoTicket], function (err) {
+    if (err) return res.status(500).json({ error: err.message });
+    res.json({ mensaje: 'Datos de la empresa actualizados correctamente.' });
+  });
+});
+
+// --- USUARIOS ---
+app.get('/api/usuarios', (req, res) => {
+  db.all('SELECT id, usuario, nombre, rol, activo, fecha_creacion, password FROM usuarios ORDER BY id ASC', [], (err, rows) => {
+    if (err) return res.status(500).json({ error: err.message });
+    res.json(rows);
+  });
+});
+
+app.post('/api/usuarios', (req, res) => {
+  const { usuario, nombre, password, rol } = req.body;
+  if (!usuario || !password || !nombre) {
+    return res.status(400).json({ error: 'Usuario, nombre y contraseña son requeridos.' });
+  }
+
+  const sql = `INSERT INTO usuarios (usuario, nombre, password, rol, activo) VALUES (?, ?, ?, ?, 1)`;
+  db.run(sql, [usuario.trim().toLowerCase(), nombre.trim(), password.trim(), rol || 'cajero'], function (err) {
+    if (err) {
+      if (err.message.includes('UNIQUE')) return res.status(400).json({ error: 'El usuario ya existe.' });
+      return res.status(500).json({ error: err.message });
+    }
+    res.json({ id: this.lastID, mensaje: 'Usuario registrado correctamente.' });
+  });
+});
+
+app.put('/api/usuarios/:id', (req, res) => {
+  const { id } = req.params;
+  const { nombre, password, rol, activo } = req.body;
+
+  let sql = `UPDATE usuarios SET nombre = ?, rol = ?, activo = ?`;
+  const params = [nombre.trim(), rol, activo ? 1 : 0];
+
+  if (password && password.trim() !== '') {
+    sql += `, password = ?`;
+    params.push(password.trim());
+  }
+
+  sql += ` WHERE id = ?`;
+  params.push(id);
+
+  db.run(sql, params, function (err) {
+    if (err) return res.status(500).json({ error: err.message });
+    res.json({ mensaje: 'Usuario actualizado correctamente.' });
+  });
+});
+
+app.delete('/api/usuarios/:id', (req, res) => {
+  const { id } = req.params;
+  if (parseInt(id, 10) === 1) return res.status(400).json({ error: 'No es posible eliminar al Administrador principal.' });
+
+  db.run('DELETE FROM usuarios WHERE id = ?', [id], function (err) {
+    if (err) return res.status(500).json({ error: err.message });
+    res.json({ mensaje: 'Usuario eliminado exitosamente.' });
+  });
+});
+
+app.post('/api/auth/login', (req, res) => {
+  const { usuario, password } = req.body;
+  if (!usuario || !password) return res.status(400).json({ error: 'Ingresa tu usuario y contraseña.' });
+
+  const sql = `SELECT id, usuario, nombre, rol, activo FROM usuarios WHERE usuario = ? AND password = ?`;
+  db.get(sql, [usuario.trim().toLowerCase(), password.trim()], (err, row) => {
+    if (err) return res.status(500).json({ error: err.message });
+    if (!row) return res.status(401).json({ error: 'Usuario o contraseña incorrectos.' });
+    if (!row.activo) return res.status(403).json({ error: 'Cuenta desactivada.' });
+
+    res.json({ id: row.id, usuario: row.usuario, nombre: row.nombre, rol: row.rol });
+  });
+});
+
+// --- DASHBOARD ---
 app.get('/api/dashboard/resumen', (req, res) => {
   const sqlVentas = `
     SELECT 
@@ -1122,12 +1311,124 @@ app.get('/api/dashboard/resumen', (req, res) => {
   });
 });
 
+// --- REPORTES ---
+app.get('/api/reportes/ventas', (req, res) => {
+  const sqlVentas = `
+    SELECT v.*, c.nombre AS cliente_nombre, c.telefono AS cliente_telefono
+    FROM ventas v
+    LEFT JOIN clientes c ON v.cliente_id = c.id
+    ORDER BY v.id DESC
+  `;
+
+  db.all(sqlVentas, [], (err, ventas) => {
+    if (err) return res.status(500).json({ error: err.message });
+    if (ventas.length === 0) return res.json([]);
+
+    const sqlDetalles = `
+      SELECT dv.*, p.nombre, p.codigoBarras 
+      FROM detalle_ventas dv
+      LEFT JOIN productos p ON dv.producto_id = p.id
+    `;
+
+    db.all(sqlDetalles, [], (errDet, detalles) => {
+      if (errDet) return res.status(500).json({ error: errDet.message });
+      const ventasConDetalle = ventas.map((v) => ({
+        ...v,
+        items: detalles.filter((d) => d.venta_id === v.id)
+      }));
+      res.json(ventasConDetalle);
+    });
+  });
+});
+
+app.get('/api/reportes/cortes', (req, res) => {
+  db.all(`SELECT * FROM cortes_caja ORDER BY id DESC`, [], (err, rows) => {
+    if (err) return res.status(500).json({ error: err.message });
+    res.json(rows);
+  });
+});
+
+app.get('/api/reportes/resurtido', (req, res) => {
+  const proveedorId = req.query.proveedor_id;
+
+  let sqlProductos = `
+    SELECT 
+      p.id, p.codigoBarras, p.nombre, p.locacion, p.costo, p.costoPaquete, p.piezasPorPaquete,
+      p.invActual, p.invMinimo, COALESCE(pr.nombre, 'Sin Proveedor Asignado') AS proveedor_nombre,
+      p.proveedor_id, 0 AS esManual, '' AS nota_manual
+    FROM productos p
+    LEFT JOIN proveedores pr ON p.proveedor_id = pr.id
+    WHERE (p.invActual <= p.invMinimo OR p.invActual <= 5) AND p.esServicio = 0 AND p.noInventariado = 0
+  `;
+  const paramsProd = [];
+
+  if (proveedorId && proveedorId !== 'todos') {
+    if (proveedorId === 'sin_proveedor') {
+      sqlProductos += ` AND p.proveedor_id IS NULL`;
+    } else {
+      sqlProductos += ` AND p.proveedor_id = ?`;
+      paramsProd.push(proveedorId);
+    }
+  }
+
+  let sqlManuales = `
+    SELECT 
+      cm.id, 'ENCARGO' AS codigoBarras, cm.nombre, 'Encargo / Novedad' AS locacion,
+      cm.costo_estimado AS costo, 0 AS costoPaquete, 1 AS piezasPorPaquete, 0 AS invActual,
+      cm.cantidad AS invMinimo, COALESCE(pr.nombre, cm.proveedor_nombre, 'Sin Proveedor Asignado') AS proveedor_nombre,
+      cm.proveedor_id, 1 AS esManual, cm.nota AS nota_manual
+    FROM compras_manuales cm
+    LEFT JOIN proveedores pr ON cm.proveedor_id = pr.id
+  `;
+  const paramsManual = [];
+
+  if (proveedorId && proveedorId !== 'todos') {
+    if (proveedorId === 'sin_proveedor') {
+      sqlManuales += ` AND cm.proveedor_id IS NULL`;
+    } else {
+      sqlManuales += ` AND cm.proveedor_id = ?`;
+      paramsManual.push(proveedorId);
+    }
+  }
+
+  db.all(sqlProductos, paramsProd, (errP, rowsProd) => {
+    if (errP) return res.status(500).json({ error: errP.message });
+    db.all(sqlManuales, paramsManual, (errM, rowsManual) => {
+      if (errM) return res.status(500).json({ error: errM.message });
+      const combinado = [...(rowsProd || []), ...(rowsManual || [])];
+      combinado.sort((a, b) => (a.proveedor_nombre || '').localeCompare(b.proveedor_nombre || '') || (a.nombre || '').localeCompare(b.nombre || ''));
+      res.json(combinado);
+    });
+  });
+});
+
+app.post('/api/reportes/resurtido/manual', (req, res) => {
+  const { nombre, cantidad, proveedor_id, proveedor_nombre, costo_estimado, nota } = req.body;
+  if (!nombre || !nombre.trim()) return res.status(400).json({ error: 'Escribe el nombre del producto.' });
+
+  const sql = `INSERT INTO compras_manuales (nombre, cantidad, proveedor_id, proveedor_nombre, costo_estimado, nota) VALUES (?, ?, ?, ?, ?, ?)`;
+  db.run(
+    sql,
+    [nombre.trim(), parseFloat(cantidad) || 1, proveedor_id ? parseInt(proveedor_id, 10) : null, proveedor_nombre || null, parseFloat(costo_estimado) || 0, nota ? nota.trim() : ''],
+    function (err) {
+      if (err) return res.status(500).json({ error: err.message });
+      res.json({ id: this.lastID, mensaje: 'Encargo registrado exitosamente.' });
+    }
+  );
+});
+
+app.delete('/api/reportes/resurtido/manual/:id', (req, res) => {
+  const { id } = req.params;
+  db.run(`DELETE FROM compras_manuales WHERE id = ?`, [id], function (err) {
+    if (err) return res.status(500).json({ error: err.message });
+    res.json({ mensaje: 'Encargo eliminado de la lista.' });
+  });
+});
+
+// --- IMPORTACIÓN MASIVA ---
 app.post('/api/productos/importar-masivo', (req, res) => {
   const { productos } = req.body;
-
-  if (!Array.isArray(productos) || productos.length === 0) {
-    return res.status(400).json({ error: 'No se recibieron productos para importar.' });
-  }
+  if (!Array.isArray(productos) || productos.length === 0) return res.status(400).json({ error: 'No se recibieron productos.' });
 
   const sql = `
     INSERT INTO productos (
@@ -1149,345 +1450,34 @@ app.post('/api/productos/importar-masivo', (req, res) => {
 
   db.serialize(() => {
     db.run('BEGIN TRANSACTION');
-
     const stmt = db.prepare(sql);
     let errores = 0;
 
     for (const p of productos) {
       if (!p.codigoBarras || !p.nombre) continue;
-
       const params = [
-        p.codigoBarras,
-        p.nombre,
-        p.locacion || '',
-        p.claveUnidad || 'PZA',
-        p.atributoColor || '',
-        p.departamento_id || null,
-        p.categoria_id || null,
-        p.proveedor_id || null,
-        p.imagen || null,
-        p.costoPaquete || 0,
-        p.piezasPorPaquete || 1,
-        p.precioVentaPaquete || 0,
-        p.notaPaquete || '',
-        p.costo || 0,
-        p.precioVenta || 0,
-        p.ganancia || 0,
-        p.invMinimo || 0,
-        parseFloat(p.invActual) || 0,
-        p.puntosLealtad || 0,
-        p.esServicio ? 1 : 0,
-        p.esKit ? 1 : 0,
-        p.aGranel ? 1 : 0,
-        p.noInventariado ? 1 : 0,
+        p.codigoBarras, p.nombre, p.locacion || '', p.claveUnidad || 'PZA', p.atributoColor || '',
+        p.departamento_id || null, p.categoria_id || null, p.proveedor_id || null, p.imagen || null,
+        p.costoPaquete || 0, p.piezasPorPaquete || 1, p.precioVentaPaquete || 0, p.notaPaquete || '',
+        p.costo || 0, p.precioVenta || 0, p.ganancia || 0, p.invMinimo || 0, parseFloat(p.invActual) || 0,
+        p.puntosLealtad || 0, p.esServicio ? 1 : 0, p.esKit ? 1 : 0, p.aGranel ? 1 : 0, p.noInventariado ? 1 : 0,
         p.fechaCompra || new Date().toISOString().split('T')[0]
       ];
-
-      stmt.run(params, (err) => {
-        if (err) errores++;
-      });
+      stmt.run(params, (err) => { if (err) errores++; });
     }
-
     stmt.finalize();
 
     db.run('COMMIT', (err) => {
       if (err) {
         db.run('ROLLBACK');
-        return res.status(500).json({ error: 'Error al procesar la transacción de importación.' });
+        return res.status(500).json({ error: 'Error al procesar la importación.' });
       }
-      res.json({
-        mensaje: `Importación completada. Se procesaron los productos correctamente.`,
-        errores
-      });
+      res.json({ mensaje: 'Importación completada exitosamente.', errores });
     });
   });
 });
 
-// HISTORIAL COMPLETO DE VENTAS
-app.get('/api/reportes/ventas', (req, res) => {
-  const sqlVentas = `
-    SELECT 
-      v.*,
-      c.nombre AS cliente_nombre,
-      c.telefono AS cliente_telefono
-    FROM ventas v
-    LEFT JOIN clientes c ON v.cliente_id = c.id
-    ORDER BY v.id DESC
-  `;
-
-  db.all(sqlVentas, [], (err, ventas) => {
-    if (err) return res.status(500).json({ error: err.message });
-    if (ventas.length === 0) return res.json([]);
-
-    const sqlDetalles = `
-      SELECT dv.*, p.nombre, p.codigoBarras 
-      FROM detalle_ventas dv
-      LEFT JOIN productos p ON dv.producto_id = p.id
-    `;
-
-    db.all(sqlDetalles, [], (errDet, detalles) => {
-      if (errDet) return res.status(500).json({ error: errDet.message });
-
-      const ventasConDetalle = ventas.map((v) => ({
-        ...v,
-        items: detalles.filter((d) => d.venta_id === v.id)
-      }));
-
-      res.json(ventasConDetalle);
-    });
-  });
-});
-
-// HISTORIAL DE CORTES DE CAJA
-app.get('/api/reportes/cortes', (req, res) => {
-  const sql = `SELECT * FROM cortes_caja ORDER BY id DESC`;
-  db.all(sql, [], (err, rows) => {
-    if (err) return res.status(500).json({ error: err.message });
-    res.json(rows);
-  });
-});
-
-// KITS
-app.get('/api/kits', (req, res) => {
-  const sqlKits = `SELECT * FROM kits ORDER BY id DESC`;
-
-  db.all(sqlKits, [], (err, rowsKits) => {
-    if (err) return res.status(500).json({ error: err.message });
-    if (rowsKits.length === 0) return res.json([]);
-
-    const sqlDetalles = `
-      SELECT kd.*, p.nombre, p.codigoBarras, p.precioVenta, p.invActual
-      FROM kit_detalles kd
-      JOIN productos p ON kd.producto_id = p.id
-    `;
-
-    db.all(sqlDetalles, [], (errDet, rowsDet) => {
-      if (errDet) return res.status(500).json({ error: errDet.message });
-
-      const kitsConComponentes = rowsKits.map((k) => ({
-        ...k,
-        items: rowsDet.filter((d) => d.kit_id === k.id)
-      }));
-
-      res.json(kitsConComponentes);
-    });
-  });
-});
-
-app.delete('/api/kits/:id', (req, res) => {
-  const { id } = req.params;
-  db.run('DELETE FROM kit_detalles WHERE kit_id = ?', [id], () => {
-    db.run('DELETE FROM kits WHERE id = ?', [id], function (err) {
-      if (err) return res.status(500).json({ error: err.message });
-      res.json({ mensaje: 'Kit eliminado correctamente' });
-    });
-  });
-});
-
-// Obtener lista completa de clientes con estadísticas
-app.get('/api/clientes', (req, res) => {
-  const sql = `
-    SELECT 
-      c.*,
-      COUNT(v.id) AS total_compras,
-      COALESCE(SUM(CASE WHEN v.estado != 'cancelada' THEN v.total ELSE 0 END), 0) AS total_gastado
-    FROM clientes c
-    LEFT JOIN ventas v ON c.id = v.cliente_id
-    GROUP BY c.id
-    ORDER BY c.puntos_acumulados DESC, c.id DESC
-  `;
-
-  db.all(sql, [], (err, rows) => {
-    if (err) return res.status(500).json({ error: err.message });
-    res.json(rows);
-  });
-});
-
-// Actualizar datos o saldo de puntos de un cliente
-app.put('/api/clientes/:id', (req, res) => {
-  const { nombre, telefono, puntos_acumulados } = req.body;
-  const { id } = req.params;
-
-  if (!nombre || !telefono) {
-    return res.status(400).json({ error: 'Nombre y teléfono son obligatorios.' });
-  }
-
-  const sql = `
-    UPDATE clientes 
-    SET nombre = ?, telefono = ?, puntos_acumulados = ?
-    WHERE id = ?
-  `;
-
-  db.run(sql, [nombre.trim(), telefono.trim(), parseInt(puntos_acumulados) || 0, id], function (err) {
-    if (err) {
-      if (err.message.includes('UNIQUE')) {
-        return res.status(400).json({ error: 'Ya existe otro cliente con ese número telefónico.' });
-      }
-      return res.status(500).json({ error: err.message });
-    }
-    if (this.changes === 0) {
-      return res.status(404).json({ error: 'Cliente no encontrado.' });
-    }
-    res.json({ mensaje: 'Cliente actualizado correctamente.' });
-  });
-});
-
-// Eliminar cliente
-app.delete('/api/clientes/:id', (req, res) => {
-  const { id } = req.params;
-  db.run('DELETE FROM clientes WHERE id = ?', [id], function (err) {
-    if (err) return res.status(500).json({ error: err.message });
-    if (this.changes === 0) return res.status(404).json({ error: 'Cliente no encontrado.' });
-    res.json({ mensaje: 'Cliente eliminado correctamente.' });
-  });
-});
-
-// Ver historial de compras asociadas a un cliente
-app.get('/api/clientes/:id/historial', (req, res) => {
-  const { id } = req.params;
-  const sql = `
-    SELECT id, folio, fecha_hora, total, metodo_pago, puntos_ganados, puntos_canjeados, estado
-    FROM ventas 
-    WHERE cliente_id = ? 
-    ORDER BY id DESC
-  `;
-
-  db.all(sql, [id], (err, rows) => {
-    if (err) return res.status(500).json({ error: err.message });
-    res.json(rows);
-  });
-});
-
-// --- ENDPOINTS DE EMPRESA Y CONFIGURACIÓN ---
-app.get('/api/empresa', (req, res) => {
-  db.get('SELECT * FROM empresa_datos WHERE id = 1', [], (err, row) => {
-    if (err) return res.status(500).json({ error: err.message });
-    const datos = row || {};
-    
-    // SQLite guarda 0 o 1. Verificamos explícitamente que no sea 0 ni false.
-    const autoTicket = (datos.imprimir_ticket_auto === 0 || datos.imprimir_ticket_auto === '0' || datos.imprimir_ticket_auto === false) 
-      ? false 
-      : true;
-
-    res.json({
-      ...datos,
-      imprimir_ticket_auto: autoTicket
-    });
-  });
-});
-
-app.post('/api/empresa', (req, res) => {
-  const { nombre, sucursal, direccion, telefono, mensaje_ticket, logo, imprimir_ticket_auto } = req.body;
-
-  // Convertimos a 1 o 0 de forma estricta para SQLite
-  const autoTicket = (imprimir_ticket_auto === false || imprimir_ticket_auto === 0 || imprimir_ticket_auto === '0') ? 0 : 1;
-
-  const sql = `
-    INSERT INTO empresa_datos (id, nombre, sucursal, direccion, telefono, mensaje_ticket, logo, imprimir_ticket_auto)
-    VALUES (1, ?, ?, ?, ?, ?, ?, ?)
-    ON CONFLICT(id) DO UPDATE SET
-      nombre = excluded.nombre,
-      sucursal = excluded.sucursal,
-      direccion = excluded.direccion,
-      telefono = excluded.telefono,
-      mensaje_ticket = excluded.mensaje_ticket,
-      logo = CASE WHEN excluded.logo IS NOT NULL AND excluded.logo != '' THEN excluded.logo ELSE empresa_datos.logo END,
-      imprimir_ticket_auto = excluded.imprimir_ticket_auto
-  `;
-
-  db.run(sql, [nombre || '', sucursal || '', direccion || '', telefono || '', mensaje_ticket || '', logo || null, autoTicket], function (err) {
-    if (err) return res.status(500).json({ error: err.message });
-    res.json({ mensaje: 'Datos de la empresa actualizados correctamente.' });
-  });
-});
-
-// --- ENDPOINTS DE GESTIÓN DE USUARIOS ---
-app.get('/api/usuarios', (req, res) => {
-  db.all('SELECT id, usuario, nombre, rol, activo, fecha_creacion, password FROM usuarios ORDER BY id ASC', [], (err, rows) => {
-    if (err) return res.status(500).json({ error: err.message });
-    res.json(rows);
-  });
-});
-
-app.post('/api/usuarios', (req, res) => {
-  const { usuario, nombre, password, rol } = req.body;
-  if (!usuario || !password || !nombre) {
-    return res.status(400).json({ error: 'Usuario, nombre y contraseña son requeridos.' });
-  }
-
-  const sql = `INSERT INTO usuarios (usuario, nombre, password, rol, activo) VALUES (?, ?, ?, ?, 1)`;
-  db.run(sql, [usuario.trim().toLowerCase(), nombre.trim(), password.trim(), rol || 'cajero'], function (err) {
-    if (err) {
-      if (err.message.includes('UNIQUE')) {
-        return res.status(400).json({ error: 'El nombre de usuario ya está registrado.' });
-      }
-      return res.status(500).json({ error: err.message });
-    }
-    res.json({ id: this.lastID, mensaje: 'Usuario registrado correctamente.' });
-  });
-});
-
-app.put('/api/usuarios/:id', (req, res) => {
-  const { nombre, password, rol, activo } = req.body;
-  const { id } = req.params;
-
-  let sql = `UPDATE usuarios SET nombre = ?, rol = ?, activo = ?`;
-  const params = [nombre.trim(), rol, activo ? 1 : 0];
-
-  if (password && password.trim() !== '') {
-    sql += `, password = ?`;
-    params.push(password.trim());
-  }
-
-  sql += ` WHERE id = ?`;
-  params.push(id);
-
-  db.run(sql, params, function (err) {
-    if (err) return res.status(500).json({ error: err.message });
-    res.json({ mensaje: 'Usuario actualizado correctamente.' });
-  });
-});
-
-app.delete('/api/usuarios/:id', (req, res) => {
-  const { id } = req.params;
-  if (parseInt(id, 10) === 1) {
-    return res.status(400).json({ error: 'No es posible eliminar al Administrador principal.' });
-  }
-
-  db.run('DELETE FROM usuarios WHERE id = ?', [id], function (err) {
-    if (err) return res.status(500).json({ error: err.message });
-    res.json({ mensaje: 'Usuario eliminado exitosamente.' });
-  });
-});
-
-// --- ENDPOINT DE AUTENTICACIÓN / LOGIN ---
-app.post('/api/auth/login', (req, res) => {
-  const { usuario, password } = req.body;
-
-  if (!usuario || !password) {
-    return res.status(400).json({ error: 'Ingresa tu usuario y contraseña.' });
-  }
-
-  const sql = `SELECT id, usuario, nombre, rol, activo FROM usuarios WHERE usuario = ? AND password = ?`;
-  db.get(sql, [usuario.trim().toLowerCase(), password.trim()], (err, row) => {
-    if (err) return res.status(500).json({ error: err.message });
-    if (!row) {
-      return res.status(401).json({ error: 'Usuario o contraseña incorrectos.' });
-    }
-    if (!row.activo) {
-      return res.status(403).json({ error: 'Esta cuenta se encuentra desactivada. Contacta al administrador.' });
-    }
-
-    res.json({
-      id: row.id,
-      usuario: row.usuario,
-      nombre: row.nombre,
-      rol: row.rol
-    });
-  });
-});
-
-// --- ENDPOINTS DEL MÓDULO BASE DE DATOS (RESPALDOS) ---
+// --- BACKUPS Y RESTAURACIÓN ---
 app.get('/api/backup/estado', (req, res) => {
   try {
     const stats = fs.existsSync(RUTA_DB_ACTUAL) ? fs.statSync(RUTA_DB_ACTUAL) : null;
@@ -1575,200 +1565,26 @@ app.post('/api/backup/optimizar', (req, res) => {
   });
 });
 
-// REPORTE DE RESURTIDO COMBINADO (Inventario bajo automático + Encargos manuales)
-app.get('/api/reportes/resurtido', (req, res) => {
-  const proveedorId = req.query.proveedor_id;
+app.post('/api/backup/restaurar', (req, res) => {
+  const { archivoBase64 } = req.body;
+  if (!archivoBase64) return res.status(400).json({ error: 'No se recibió el archivo de respaldo.' });
 
-  let sqlProductos = `
-    SELECT 
-      p.id,
-      p.codigoBarras,
-      p.nombre,
-      p.locacion,
-      p.costo,
-      p.costoPaquete,
-      p.piezasPorPaquete,
-      p.invActual,
-      p.invMinimo,
-      COALESCE(pr.nombre, 'Sin Proveedor Asignado') AS proveedor_nombre,
-      p.proveedor_id,
-      0 AS esManual,
-      '' AS nota_manual
-    FROM productos p
-    LEFT JOIN proveedores pr ON p.proveedor_id = pr.id
-    WHERE (p.invActual <= p.invMinimo OR p.invActual <= 5)
-      AND p.esServicio = 0 
-      AND p.noInventariado = 0
-  `;
-  const paramsProd = [];
+  try {
+    const base64Data = archivoBase64.replace(/^data:application\/octet-stream;base64,/, '').replace(/^data:.*;base64,/, '');
+    const buffer = Buffer.from(base64Data, 'base64');
 
-  if (proveedorId && proveedorId !== 'todos') {
-    if (proveedorId === 'sin_proveedor') {
-      sqlProductos += ` AND p.proveedor_id IS NULL`;
-    } else {
-      sqlProductos += ` AND p.proveedor_id = ?`;
-      paramsProd.push(proveedorId);
-    }
+    db.close((errClose) => {
+      if (errClose) console.error('Error al cerrar DB:', errClose);
+
+      fs.writeFileSync(RUTA_DB_ACTUAL, buffer);
+      res.json({ mensaje: 'Base de datos restaurada con éxito.' });
+      setTimeout(() => {
+        process.exit(0);
+      }, 500);
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'Error al procesar la restauración del archivo.' });
   }
-
-  let sqlManuales = `
-    SELECT 
-      cm.id,
-      'ENCARGO' AS codigoBarras,
-      cm.nombre,
-      'Encargo / Novedad' AS locacion,
-      cm.costo_estimado AS costo,
-      0 AS costoPaquete,
-      1 AS piezasPorPaquete,
-      0 AS invActual,
-      cm.cantidad AS invMinimo,
-      COALESCE(pr.nombre, cm.proveedor_nombre, 'Sin Proveedor Asignado') AS proveedor_nombre,
-      cm.proveedor_id,
-      1 AS esManual,
-      cm.nota AS nota_manual
-    FROM compras_manuales cm
-    LEFT JOIN proveedores pr ON cm.proveedor_id = pr.id
-  `;
-  const paramsManual = [];
-
-  if (proveedorId && proveedorId !== 'todos') {
-    if (proveedorId === 'sin_proveedor') {
-      sqlManuales += ` AND cm.proveedor_id IS NULL`;
-    } else {
-      sqlManuales += ` AND cm.proveedor_id = ?`;
-      paramsManual.push(proveedorId);
-    }
-  }
-
-  db.all(sqlProductos, paramsProd, (errP, rowsProd) => {
-    if (errP) return res.status(500).json({ error: errP.message });
-
-    db.all(sqlManuales, paramsManual, (errM, rowsManual) => {
-      if (errM) return res.status(500).json({ error: errM.message });
-
-      const combinado = [...(rowsProd || []), ...(rowsManual || [])];
-      combinado.sort((a, b) => (a.proveedor_nombre || '').localeCompare(b.proveedor_nombre || '') || (a.nombre || '').localeCompare(b.nombre || ''));
-
-      res.json(combinado);
-    });
-  });
-});
-
-// Guardar producto manual por encargo / novedad
-app.post('/api/reportes/resurtido/manual', (req, res) => {
-  const { nombre, cantidad, proveedor_id, proveedor_nombre, costo_estimado, nota } = req.body;
-
-  if (!nombre || !nombre.trim()) {
-    return res.status(400).json({ error: 'Escribe el nombre o descripción del producto a buscar.' });
-  }
-
-  const sql = `
-    INSERT INTO compras_manuales (nombre, cantidad, proveedor_id, proveedor_nombre, costo_estimado, nota)
-    VALUES (?, ?, ?, ?, ?, ?)
-  `;
-
-  db.run(
-    sql,
-    [
-      nombre.trim(),
-      parseFloat(cantidad) || 1,
-      proveedor_id ? parseInt(proveedor_id, 10) : null,
-      proveedor_nombre || null,
-      parseFloat(costo_estimado) || 0,
-      nota ? nota.trim() : ''
-    ],
-    function (err) {
-      if (err) return res.status(500).json({ error: err.message });
-      res.json({ id: this.lastID, mensaje: 'Encargo registrado exitosamente.' });
-    }
-  );
-});
-
-// Eliminar encargo manual de compras
-app.delete('/api/reportes/resurtido/manual/:id', (req, res) => {
-  const { id } = req.params;
-  db.run(`DELETE FROM compras_manuales WHERE id = ?`, [id], function (err) {
-    if (err) return res.status(500).json({ error: err.message });
-    res.json({ mensaje: 'Encargo eliminado de la lista.' });
-  });
-});
-
-// --- DEPARTAMENTOS (PUT y DELETE) ---
-app.put('/api/departamentos/:id', (req, res) => {
-  const { id } = req.params;
-  const { nombre } = req.body;
-  if (!nombre || !nombre.trim()) return res.status(400).json({ error: 'El nombre es obligatorio.' });
-
-  db.run('UPDATE departamentos SET nombre = ? WHERE id = ?', [nombre.trim(), id], function (err) {
-    if (err) return res.status(400).json({ error: 'El departamento ya existe o hay un error.' });
-    if (this.changes === 0) return res.status(404).json({ error: 'Departamento no encontrado.' });
-    res.json({ mensaje: 'Departamento actualizado correctamente.' });
-  });
-});
-
-app.delete('/api/departamentos/:id', (req, res) => {
-  const { id } = req.params;
-  db.get('SELECT COUNT(*) as count FROM productos WHERE departamento_id = ?', [id], (err, row) => {
-    if (row && row.count > 0) {
-      return res.status(400).json({ error: `No se puede eliminar: hay ${row.count} producto(s) asignados a este departamento.` });
-    }
-    db.run('DELETE FROM departamentos WHERE id = ?', [id], function (errDel) {
-      if (errDel) return res.status(500).json({ error: 'Error al eliminar departamento.' });
-      res.json({ mensaje: 'Departamento eliminado correctamente.' });
-    });
-  });
-});
-
-// --- CATEGORÍAS (PUT y DELETE) ---
-app.put('/api/categorias/:id', (req, res) => {
-  const { id } = req.params;
-  const { nombre } = req.body;
-  if (!nombre || !nombre.trim()) return res.status(400).json({ error: 'El nombre es obligatorio.' });
-
-  db.run('UPDATE categorias SET nombre = ? WHERE id = ?', [nombre.trim(), id], function (err) {
-    if (err) return res.status(400).json({ error: 'La categoría ya existe o hay un error.' });
-    if (this.changes === 0) return res.status(404).json({ error: 'Categoría no encontrada.' });
-    res.json({ mensaje: 'Categoría actualizada correctamente.' });
-  });
-});
-
-app.delete('/api/categorias/:id', (req, res) => {
-  const { id } = req.params;
-  db.get('SELECT COUNT(*) as count FROM productos WHERE categoria_id = ?', [id], (err, row) => {
-    if (row && row.count > 0) {
-      return res.status(400).json({ error: `No se puede eliminar: hay ${row.count} producto(s) asignados a esta categoría.` });
-    }
-    db.run('DELETE FROM categorias WHERE id = ?', [id], function (errDel) {
-      if (errDel) return res.status(500).json({ error: 'Error al eliminar categoría.' });
-      res.json({ mensaje: 'Categoría eliminada correctamente.' });
-    });
-  });
-});
-
-// --- PROVEEDORES (PUT y DELETE) ---
-app.put('/api/proveedores/:id', (req, res) => {
-  const { id } = req.params;
-  const { nombre, telefono, contacto } = req.body;
-  if (!nombre || !nombre.trim()) return res.status(400).json({ error: 'El nombre es obligatorio.' });
-
-  db.run('UPDATE proveedores SET nombre = ?, telefono = ?, contacto = ? WHERE id = ?', [nombre.trim(), telefono || '', contacto || '', id], function (err) {
-    if (err) return res.status(400).json({ error: 'El proveedor ya existe o hay un error.' });
-    if (this.changes === 0) return res.status(404).json({ error: 'Proveedor no encontrado.' });
-    res.json({ mensaje: 'Proveedor actualizado correctamente.' });
-  });
-});
-
-app.delete('/api/proveedores/:id', (req, res) => {
-  const { id } = req.params;
-  db.get('SELECT COUNT(*) as count FROM productos WHERE proveedor_id = ?', [id], (err, row) => {
-    if (row && row.count > 0) {
-      return res.status(400).json({ error: `No se puede eliminar: hay ${row.count} producto(s) asignados a este proveedor.` });
-    }
-    db.run('DELETE FROM proveedores WHERE id = ?', [id], function (errDel) {
-      if (errDel) return res.status(500).json({ error: 'Error al eliminar proveedor.' });
-      res.json({ mensaje: 'Proveedor eliminado correctamente.' });
-    });
-  });
 });
 
 const PORT = process.env.PORT || 3001;

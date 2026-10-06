@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import logoAsadel from '../assets/Logo.jpg';
 import './GestionBaseDatos.css';
 import { API_URL } from '../config';
@@ -13,6 +13,7 @@ export default function GestionBaseDatos({ volverAlDashboard }) {
   });
   const [frecuenciaSeleccionada, setFrecuenciaSeleccionada] = useState('diario');
   const [procesando, setProcesando] = useState(false);
+  const fileInputDbRef = useRef(null);
 
   const cargarEstadoBD = async () => {
     try {
@@ -32,7 +33,6 @@ export default function GestionBaseDatos({ volverAlDashboard }) {
   }, []);
 
   const descargarRespaldo = () => {
-    // Dispara la descarga del archivo binario directamente en la computadora
     window.location.href = `${API_URL}/api/backup/descargar`;
     setTimeout(() => cargarEstadoBD(), 2000);
   };
@@ -85,6 +85,41 @@ export default function GestionBaseDatos({ volverAlDashboard }) {
     }
   };
 
+  const manejarSubidaBD = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    if (!window.confirm('⚠️ ADVERTENCIA: Restaurar un archivo de respaldo sobrescribirá la base de datos actual con los datos del archivo seleccionado. ¿Deseas continuar?')) {
+      e.target.value = null;
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      try {
+        const base64Contenido = event.target.result;
+        const res = await fetch(`${API_URL}/api/backup/restaurar`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ archivoBase64: base64Contenido })
+        });
+
+        if (res.ok) {
+          alert('✅ ¡Base de datos restaurada con éxito! La página se recargará.');
+          window.location.reload();
+        } else {
+          const errData = await res.json();
+          alert(errData.error || 'Error al restaurar la base de datos.');
+        }
+      } catch {
+        alert('Error de conexión al enviar el archivo de respaldo.');
+      } finally {
+        e.target.value = null;
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
   return (
     <div className="bd-container">
       {/* Encabezado */}
@@ -126,7 +161,7 @@ export default function GestionBaseDatos({ volverAlDashboard }) {
         <div className="bd-box">
           <h3>Copias de Seguridad (Backup)</h3>
           <p style={{ margin: 0, fontSize: '13px', color: '#64748b' }}>
-            Descarga una copia completa del archivo de datos para guardarla en una memoria USB o disco externo.
+            Descarga una copia completa del archivo de datos para guardarla en una memoria USB o restáurala cuando lo necesites.
           </p>
 
           <div className="bd-actions-row">
@@ -139,6 +174,17 @@ export default function GestionBaseDatos({ volverAlDashboard }) {
                 </small>
               </div>
             </button>
+
+            <button className="btn-big-action" onClick={() => fileInputDbRef.current.click()}>
+              <span style={{ fontSize: '22px' }}>⬆️️</span>
+              <div>
+                <div>Cargar / Restaurar Respaldo (.db)</div>
+                <small style={{ fontWeight: 'normal', color: '#64748b' }}>
+                  Sube un archivo de base de datos previo para restaurarlo
+                </small>
+              </div>
+            </button>
+            <input type="file" ref={fileInputDbRef} style={{ display: 'none' }} accept=".db" onChange={manejarSubidaBD} />
 
             <button className="btn-big-action" onClick={generarCopiaLocal} disabled={procesando}>
               <span style={{ fontSize: '22px' }}>📂</span>

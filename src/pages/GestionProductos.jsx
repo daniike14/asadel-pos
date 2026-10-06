@@ -503,8 +503,118 @@ export default function GestionProductos() {
         }
     };
 
-    const handleExportarVacio = () => { alert("La exportación está desactivada temporalmente."); };
-    const handleImportarVacio = () => { alert("La importación está desactivada temporalmente."); if(fileInputRef.current) fileInputRef.current.value = null; };
+    // Exportación a CSV compatible con Excel
+    const handleExportarCSV = () => {
+        if (productos.length === 0) return alert('No hay productos en el catálogo para exportar.');
+
+        const encabezados = [
+            'codigoBarras',
+            'nombre',
+            'precioVenta',
+            'costo',
+            'invActual',
+            'invMinimo',
+            'piezasPorPaquete',
+            'precioVentaPaquete',
+            'locacion',
+            'claveUnidad'
+        ];
+
+        const filas = productos.map((p) => [
+            `"${p.codigoBarras || ''}"`,
+            `"${(p.nombre || '').replace(/"/g, '""')}"`,
+            p.precioVenta || 0,
+            p.costo || 0,
+            p.invActual || 0,
+            p.invMinimo || 0,
+            p.piezasPorPaquete || 1,
+            p.precioVentaPaquete || 0,
+            `"${p.locacion || ''}"`,
+            `"${p.claveUnidad || 'PZA'}"`
+        ]);
+
+        const contenidoCSV = [encabezados.join(','), ...filas.map((f) => f.join(','))].join('\r\n');
+        const blob = new Blob(['\ufeff' + contenidoCSV], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.setAttribute('download', `catalogo_productos_${new Date().toISOString().split('T')[0]}.csv`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    };
+
+    // Importación de archivo CSV a la base de datos
+    const handleImportarCSV = (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = async (event) => {
+            try {
+                const texto = event.target.result;
+                const lineas = texto.split(/\r\n|\n/).filter((l) => l.trim() !== '');
+                if (lineas.length <= 1) return alert('El archivo está vacío o no contiene filas de datos.');
+
+                const headers = lineas[0].split(',').map((h) => h.replace(/"/g, '').trim());
+                const productosAImportar = [];
+
+                for (let i = 1; i < lineas.length; i++) {
+                    const valores = lineas[i].split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/).map((v) => v.replace(/^"|"$/g, '').trim());
+                    if (valores.length < 2) continue;
+
+                    const filaObj = {};
+                    headers.forEach((h, idx) => {
+                        filaObj[h] = valores[idx] || '';
+                    });
+
+                    if (filaObj.nombre && (filaObj.codigoBarras || filaObj.codigo)) {
+                        productosAImportar.push({
+                            codigoBarras: filaObj.codigoBarras || filaObj.codigo,
+                            nombre: filaObj.nombre,
+                            precioVenta: parseFloat(filaObj.precioVenta) || 0,
+                            costo: parseFloat(filaObj.costo) || 0,
+                            invActual: parseFloat(filaObj.invActual) || 0,
+                            invMinimo: parseFloat(filaObj.invMinimo) || 0,
+                            piezasPorPaquete: parseInt(filaObj.piezasPorPaquete, 10) || 1,
+                            precioVentaPaquete: parseFloat(filaObj.precioVentaPaquete) || 0,
+                            locacion: filaObj.locacion || '',
+                            claveUnidad: filaObj.claveUnidad || 'PZA'
+                        });
+                    }
+                }
+
+                if (productosAImportar.length === 0) {
+                    return alert('No se encontraron productos válidos. Revisa que las columnas tengan "codigoBarras" y "nombre".');
+                }
+
+                if (!window.confirm(`Se encontraron ${productosAImportar.length} productos en el archivo. ¿Deseas ingresarlos o actualizarlos en el catálogo?`)) {
+                    return;
+                }
+
+                const res = await fetch(`${API_URL}/api/productos/importar-masivo`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ productos: productosAImportar })
+                });
+
+                if (res.ok) {
+                    const resData = await res.json();
+                    alert(`✅ ${resData.mensaje}`);
+                    cargarProductos();
+                } else {
+                    const errData = await res.json();
+                    alert(errData.error || 'Error al procesar la importación.');
+                }
+            } catch {
+                alert('Error al leer el archivo. Asegúrate de que sea un archivo CSV delimitado por comas.');
+            } finally {
+                if (fileInputRef.current) fileInputRef.current.value = null;
+            }
+        };
+
+        reader.readAsText(file, 'UTF-8');
+    };
 
     const toggleColumna = (colName) => {
         setColumnasVisibles(prev => ({ ...prev, [colName]: !prev[colName] }));
@@ -791,9 +901,15 @@ export default function GestionProductos() {
                                             </div>
                                         )}
                                     </div>
-                                    <button className="btn-secondary" onClick={() => fileInputRef.current.click()}>⬆️️ Importar</button>
-                                    <input type="file" ref={fileInputRef} style={{ display: 'none' }} accept=".csv" onChange={handleImportarVacio} />
-                                    <button className="btn-secondary" onClick={handleExportarVacio}>⬇️ Exportar CSV</button>
+                                    <button className="btn-secondary" onClick={() => fileInputRef.current.click()}>⬆ Importar CSV</button>
+                                    <input 
+                                        type="file" 
+                                        ref={fileInputRef} 
+                                        style={{ display: 'none' }} 
+                                        accept=".csv" 
+                                        onChange={handleImportarCSV} 
+                                    />
+                                    <button className="btn-secondary" onClick={handleExportarCSV}>⬇️ Exportar CSV</button>
                                     <button className="btn-primary" onClick={handleNuevoProducto}>+ Agregar Producto</button>
                                 </>
                             )}
