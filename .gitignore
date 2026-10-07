@@ -22,3 +22,11 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+# Base de datos local SQLite y respaldos
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+backups/
+catalogo_productos_importar.csv
+Productos_*.xlsx
