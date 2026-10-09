@@ -1294,3 +1294,297 @@
   color: #991b1b;
   border: 1px solid #fca5a5;
 }
+
+/* =========================================================
+   ADAPTACIÓN RESPONSIVA PARA CELULARES Y TABLETS (< 768px)
+   ========================================================= */
+/* =========================================================
+   ADAPTACIÓN RESPONSIVA PARA CELULARES Y TABLETS (< 768px)
+   ========================================================= */
+@media (max-width: 768px) {
+  .pos-container {
+    height: auto;
+    min-height: calc(100vh - 52px);
+    padding: 8px;
+    gap: 8px;
+  }
+
+  .pos-header {
+    display: none;
+  }
+
+  /* Barra de búsqueda */
+  .pos-search-bar {
+    padding: 8px 10px;
+    font-size: 12px;
+  }
+
+  .pos-search-bar input {
+    font-size: 13px;
+    padding: 6px 8px;
+  }
+
+  /* Estructura vertical */
+  .pos-body {
+    flex-direction: column;
+    overflow: visible;
+  }
+
+  .pos-left-panel {
+    width: 100%;
+    overflow: visible;
+  }
+
+  .pos-table-wrapper {
+    max-height: 40vh;
+    min-height: 160px;
+  }
+
+  .pos-table th, 
+  .pos-table td {
+    padding: 6px 4px;
+    font-size: 12px;
+  }
+
+  .qty-controls-table {
+    gap: 2px;
+  }
+
+  .btn-qty-mini {
+    width: 26px;
+    height: 28px;
+    font-size: 15px;
+  }
+
+  .input-qty-table {
+    width: 32px;
+    height: 28px;
+    font-size: 12px;
+  }
+
+  .pos-total-banner {
+    padding: 10px 14px;
+  }
+
+  .pos-total-banner h2 {
+    font-size: 22px;
+  }
+
+  .pos-quick-actions {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 6px;
+  }
+
+  .pos-quick-actions .btn-secondary {
+    padding: 8px;
+    font-size: 11px;
+  }
+
+  .pos-right-panel {
+    width: 100%;
+    flex-direction: column;
+  }
+
+  .pos-viewer-card {
+    padding: 8px;
+  }
+
+  .pos-viewer-card .image-box {
+    height: 110px;
+  }
+
+  .pos-checkout-actions {
+    position: sticky;
+    bottom: 8px;
+    z-index: 50;
+    gap: 6px;
+  }
+
+  .btn-main {
+    padding: 14px;
+    font-size: 15px;
+  }
+
+  /* Búsqueda predictiva compacta */
+  .pos-autocomplete-header {
+    grid-template-columns: 1fr 85px !important;
+    padding: 6px 10px !important;
+  }
+
+  .pos-autocomplete-header span:nth-child(3) {
+    display: none;
+  }
+
+  .pos-autocomplete-item {
+    grid-template-columns: 1fr 90px !important;
+    padding: 8px 10px !important;
+    gap: 6px;
+  }
+
+  .pos-autocomplete-name {
+    font-size: 13px !important;
+    white-space: normal !important;
+    line-height: 1.25;
+  }
+
+  .pos-autocomplete-col-info {
+    padding-right: 4px !important;
+  }
+
+  .pos-autocomplete-col-price {
+    font-size: 14px !important;
+    padding-right: 0 !important;
+  }
+
+  .pos-autocomplete-col-stock {
+    grid-column: 2;
+    font-size: 11px !important;
+    text-align: right;
+  }
+
+  /* --- MODALES CENTRADOS Y COMPACTOS EN MÓVIL --- */
+  .modal-overlay {
+    padding: 12px;
+    align-items: center !important;
+    justify-content: center !important;
+    display: flex;
+    overflow-y: auto;
+  }
+
+  .modal-content {
+    width: 100% !important;
+    max-width: 420px !important;
+    max-height: 90vh !important;
+    border-radius: 12px !important;
+    display: flex;
+    flex-direction: column;
+    margin: auto !important;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3) !important;
+  }
+
+  .modal-header {
+    padding: 10px 14px !important;
+  }
+
+  .modal-header h2 {
+    font-size: 14px !important;
+  }
+
+  .modal-body {
+    padding: 12px !important;
+    gap: 8px !important;
+    overflow-y: auto;
+  }
+
+  .modal-footer {
+    padding: 10px 12px !important;
+    gap: 8px;
+    background-color: #f8fafc;
+  }
+
+  .modal-footer button {
+    flex: 1;
+    padding: 10px 8px !important;
+    font-size: 13px;
+  }
+
+  /* --- MODAL DE COBRO MÓVIL COMPACTO --- */
+  .modal-total-box {
+    padding: 8px 12px !important;
+  }
+
+  .modal-total-box span {
+    font-size: 11px !important;
+  }
+
+  .modal-total-box h1 {
+    font-size: 22px !important;
+    margin: 2px 0 0 0 !important;
+  }
+
+  .customer-loyalty-box {
+    padding: 8px 10px !important;
+    gap: 6px !important;
+  }
+
+  .payment-fields {
+    gap: 6px !important;
+  }
+
+  .payment-fields .field-group label {
+    font-size: 11px !important;
+  }
+
+  .payment-fields input {
+    font-size: 16px !important;
+    padding: 6px 10px !important;
+  }
+
+  .payment-summary {
+    padding: 8px 12px !important;
+    gap: 4px !important;
+  }
+
+  .summary-row {
+    font-size: 12px !important;
+  }
+
+  /* --- FORMATO DE TICKET / NOTA DE VENTA ADAPTADO A CELULAR --- */
+  .ticket-preview {
+    padding: 4px !important;
+  }
+
+  .nota-carta-container {
+    padding: 12px 10px !important;
+    border-radius: 6px;
+    font-size: 12px;
+  }
+
+  .nota-carta-header {
+    flex-direction: column;
+    gap: 8px;
+    border-bottom: 1.5px solid #0f172a;
+    padding-bottom: 8px;
+    margin-bottom: 8px;
+  }
+
+  .nota-carta-empresa h2 {
+    font-size: 16px !important;
+  }
+
+  .nota-carta-empresa p {
+    font-size: 11px !important;
+  }
+
+  .nota-carta-datos-folio {
+    text-align: left !important;
+    font-size: 11px !important;
+    line-height: 1.3 !important;
+  }
+
+  .nota-carta-table th,
+  .nota-carta-table td {
+    padding: 6px 4px !important;
+    font-size: 11px !important;
+  }
+
+  .nota-carta-totales {
+    margin-top: 8px !important;
+  }
+
+  .nota-carta-totales-tabla {
+    width: 100% !important;
+    font-size: 12px !important;
+  }
+
+  .nota-carta-total-destacado td {
+    font-size: 16px !important;
+    padding-top: 4px !important;
+  }
+
+  .nota-carta-footer {
+    margin-top: 10px !important;
+    padding-top: 8px !important;
+    font-size: 10px !important;
+  }
+}

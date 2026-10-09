@@ -901,3 +901,281 @@
 .kit-autocomplete-item:last-child {
   border-bottom: none;
 }
+
+/* =========================================================
+   ADAPTACIÓN RESPONSIVA NATIVA Y LIMPIA PARA CELULARES (< 768px)
+   ========================================================= */
+/* =========================================================
+   ADAPTACIÓN RESPONSIVA EXACTA PARA CELULARES (< 768px)
+   ========================================================= */
+@media (max-width: 768px) {
+  .gp-container {
+    padding: 6px;
+    background-color: #f8fafc;
+    min-height: calc(100vh - 52px);
+  }
+
+  /* 1. Header y navegación móvil */
+  .gp-header {
+    background: #ffffff;
+    border-radius: 8px;
+    border: 1px solid #e2e8f0;
+    padding: 8px;
+    margin-bottom: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .gp-branding {
+    display: none; /* Se oculta para no duplicar con la barra de la app */
+  }
+
+  .gp-header-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    width: 100%;
+  }
+
+  /* Carrusel de pestañas (Catálogo, Kits, Promociones...) */
+  .gp-tabs-nav {
+    display: flex;
+    overflow-x: auto;
+    white-space: nowrap;
+    gap: 6px;
+    padding: 3px;
+    background: #f1f5f9;
+    border-radius: 6px;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  .gp-tabs-nav::-webkit-scrollbar {
+    display: none;
+  }
+
+  .gp-tab-nav-btn {
+    padding: 6px 10px;
+    font-size: 11px;
+    flex-shrink: 0;
+  }
+
+  /* Ocultar botones pesados de PC en móvil */
+  .column-menu-wrapper,
+  .gp-header-actions > .btn-secondary {
+    display: none !important;
+  }
+
+  /* Botón + Agregar Producto con tamaño normal y texto visible */
+  .gp-header-actions .btn-primary {
+    display: flex !important;
+    align-items: center;
+    justify-content: center;
+    width: 100% !important;
+    height: 38px !important;
+    padding: 0 16px !important;
+    font-size: 13px !important;
+    font-weight: bold !important;
+    color: #ffffff !important;
+    background-color: #2563eb !important;
+    border-radius: 6px !important;
+    margin: 0 !important;
+  }
+
+  /* 2. Filtros organizados en cuadrícula limpia */
+  .gp-catalogo-view {
+    padding: 8px;
+    gap: 8px;
+    background: #ffffff;
+    border-radius: 8px;
+    border: 1px solid #e2e8f0;
+  }
+
+  .gp-filter-bar {
+    display: grid !important;
+    grid-template-columns: 1fr 1fr !important;
+    gap: 6px !important;
+    width: 100% !important;
+  }
+
+  /* Buscador ocupa toda la fila 1 */
+  .gp-filter-bar .filter-group.flex-1 {
+    grid-column: 1 / span 2 !important;
+    width: 100% !important;
+  }
+
+  .gp-filter-bar .filter-group.flex-1 input {
+    width: 100% !important;
+    box-sizing: border-box !important;
+    padding: 8px 10px !important;
+    font-size: 13px !important;
+    height: 36px !important;
+    border: 1px solid #cbd5e1 !important;
+    border-radius: 6px !important;
+  }
+
+  /* Selects de Depto y Paginación en la fila 2 (50% y 50%) */
+  .gp-filter-bar .filter-group:not(.flex-1) {
+    width: 100% !important;
+  }
+
+  .gp-filter-bar select {
+    width: 100% !important;
+    height: 36px !important;
+    padding: 6px 8px !important;
+    font-size: 12px !important;
+    border: 1px solid #cbd5e1 !important;
+    border-radius: 6px !important;
+    box-sizing: border-box !important;
+  }
+
+  /* 3. Tabla: Ocultar columnas secundarias de PC en celular */
+  .gp-table-container {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    max-height: 52vh;
+  }
+
+  .gp-table {
+    width: 100%;
+    min-width: 0 !important; /* Permite que encaje en el ancho de la pantalla */
+    font-size: 12px;
+  }
+
+  /* Ocultamos Departamento, Categoría, Proveedor, Costo y Estado en pantalla chica */
+  .gp-table th:nth-child(4), .gp-table td:nth-child(4), /* Depto */
+  .gp-table th:nth-child(5), .gp-table td:nth-child(5), /* Cat */
+  .gp-table th:nth-child(6), .gp-table td:nth-child(6), /* Prov */
+  .gp-table th:nth-child(7), .gp-table td:nth-child(7), /* Costo */
+  .gp-table th:nth-child(10), .gp-table td:nth-child(10) /* Estado */ {
+    display: none !important;
+  }
+
+  .gp-table th, 
+  .gp-table td {
+    padding: 8px 6px;
+    vertical-align: middle;
+  }
+
+  .col-img {
+    width: 36px;
+  }
+
+  .thumb-img, .thumb-placeholder {
+    width: 32px;
+    height: 32px;
+  }
+
+  /* Columna Nombre fluida */
+  .col-nombre {
+    white-space: normal;
+    font-size: 12px;
+    line-height: 1.25;
+    min-width: 100px;
+  }
+
+  /* Precio destacado en verde */
+  .gp-table td:nth-child(8) {
+    font-weight: bold;
+    color: #16a34a;
+    font-size: 13px;
+    white-space: nowrap;
+  }
+
+  /* Stock */
+  .gp-table td:nth-child(9) {
+    font-weight: 600;
+    font-size: 11px;
+    white-space: nowrap;
+  }
+
+  .col-actions {
+    display: flex;
+    gap: 4px;
+    justify-content: center;
+  }
+
+  .btn-action {
+    padding: 4px 6px;
+    font-size: 12px;
+  }
+
+  /* 4. Paginación compacta */
+  .gp-pagination {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding-top: 8px;
+    font-size: 11px;
+  }
+
+  .btn-page {
+    padding: 4px 8px;
+    font-size: 11px;
+  }
+
+  /* 5. Formulario de producto en móvil */
+  .gp-body {
+    grid-template-columns: 1fr;
+    padding: 10px;
+    gap: 10px;
+  }
+
+  .gp-image-box {
+    height: 140px;
+  }
+
+  .gp-form-grid {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+
+  .form-group.full-width {
+    grid-column: span 1;
+  }
+
+  .gp-footer {
+    grid-column: span 1;
+    display: flex;
+    gap: 8px;
+  }
+
+  .gp-footer button {
+    flex: 1;
+    padding: 10px;
+    font-size: 13px;
+  }
+
+  /* Kits en móvil */
+  .gp-kits-builder {
+    grid-template-columns: 1fr;
+    gap: 12px;
+    padding: 10px;
+  }
+
+  .kit-selector-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .kit-selector-row input[type="number"],
+  .kit-selector-row .btn-primary {
+    width: 100%;
+    height: 36px;
+  }
+
+  .gp-modal-historial {
+    width: 95vw !important;
+    padding: 12px !important;
+  }
+
+  .grid-nueva-compra {
+    grid-template-columns: 1fr 1fr !important;
+    gap: 6px !important;
+  }
+}
