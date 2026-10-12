@@ -104,8 +104,11 @@ html, body, #root {
 .sidebar-logo {
   width: 100%;
   max-width: 140px;
-  height: auto;
-  object-fit: contain;
+  height: 60px; /* <-- Límite estricto de altura para que no estire el menú */
+  object-fit: contain; /* <-- Encoge la imagen para que quepa sin deformarse */
+  background-color: #ffffff;
+  padding: 4px;
+  border-radius: 6px;
 }
 
 .sidebar-nav {

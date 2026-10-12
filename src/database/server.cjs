@@ -27,7 +27,7 @@ if (!fs.existsSync(RUTA_BACKUPS)) {
   fs.mkdirSync(RUTA_BACKUPS, { recursive: true });
 }
 
-const db = new sqlite3.Database(RUTA_DB_ACTUAL, (err) => {
+let db = new sqlite3.Database(RUTA_DB_ACTUAL, (err) => {
   if (err) console.error('Error al abrir la base de datos:', err.message);
   else console.log('✅ Base de datos SQLite conectada correctamente en:', RUTA_DB_ACTUAL);
 });
@@ -112,6 +112,21 @@ db.serialize(() => {
       }
     });
   });
+
+// --- NUEVA TABLA: CIERRES GLOBALES (CORTE Z) ---
+  db.run(`
+    CREATE TABLE IF NOT EXISTS cierres_globales (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      folio TEXT UNIQUE NOT NULL,
+      fecha_hora DATETIME DEFAULT CURRENT_TIMESTAMP,
+      caja_inicial REAL DEFAULT 0,
+      billetes REAL DEFAULT 0,
+      morralla REAL DEFAULT 0,
+      total_fisico REAL DEFAULT 0,
+      ventas_dia REAL DEFAULT 0,
+      ganancia_estimada REAL DEFAULT 0
+    )
+  `);
 
   db.run(`
     CREATE TABLE IF NOT EXISTS ventas (
@@ -683,6 +698,31 @@ app.get('/api/corte-caja/balance-actual', (req, res) => {
         });
       });
     });
+  });
+});
+
+// --- NUEVAS RUTAS PARA CIERRE DE CAJA GLOBAL (CORTE Z) ---
+app.post('/api/cierre-global', (req, res) => {
+  const { caja_inicial, billetes, morralla, total_fisico, ventas_dia, ganancia_estimada } = req.body;
+  const folio = `CIERRE-${Date.now().toString().slice(-6)}`;
+  const fechaHoraActual = new Date().toISOString(); 
+
+  const sql = `
+    INSERT INTO cierres_globales (
+      folio, fecha_hora, caja_inicial, billetes, morralla, total_fisico, ventas_dia, ganancia_estimada
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `;
+
+  db.run(sql, [folio, fechaHoraActual, caja_inicial, billetes, morralla, total_fisico, ventas_dia, ganancia_estimada], function (err) {
+    if (err) return res.status(500).json({ error: err.message });
+    res.json({ mensaje: 'Cierre Global registrado correctamente', id: this.lastID, folio });
+  });
+});
+
+app.get('/api/cierre-global', (req, res) => {
+  db.all(`SELECT * FROM cierres_globales ORDER BY id DESC`, [], (err, rows) => {
+    if (err) return res.status(500).json({ error: err.message });
+    res.json(rows);
   });
 });
 
@@ -1650,14 +1690,24 @@ app.post('/api/backup/restaurar', (req, res) => {
     const base64Data = archivoBase64.replace(/^data:application\/octet-stream;base64,/, '').replace(/^data:.*;base64,/, '');
     const buffer = Buffer.from(base64Data, 'base64');
 
+    // 1. Cerramos la conexión actual para que SQLite suelte el archivo
     db.close((errClose) => {
       if (errClose) console.error('Error al cerrar DB:', errClose);
 
+      // 2. Sobrescribimos el archivo físicamente con tu respaldo
       fs.writeFileSync(RUTA_DB_ACTUAL, buffer);
-      res.json({ mensaje: 'Base de datos restaurada con éxito.' });
-      setTimeout(() => {
-        process.exit(0);
-      }, 500);
+
+      // 3. RECONEXIÓN EN CALIENTE: Volvemos a abrir la base sin apagar Node
+      db = new sqlite3.Database(RUTA_DB_ACTUAL, (errOpen) => {
+        if (errOpen) {
+          console.error('Error al reabrir la base de datos:', errOpen);
+          return res.status(500).json({ error: 'Error al reconectar la base de datos nueva.' });
+        }
+        
+        console.log('✅ Base de datos restaurada y reconectada en caliente.');
+        // 4. Le avisamos a React que todo salió perfecto
+        res.json({ mensaje: 'Base de datos restaurada con éxito.' });
+      });
     });
   } catch (err) {
     res.status(500).json({ error: 'Error al procesar la restauración del archivo.' });
@@ -1667,4 +1717,4 @@ app.post('/api/backup/restaurar', (req, res) => {
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
   console.log(`🚀 Servidor corriendo en el puerto ${PORT}`);
-});
+}); 

@@ -73,8 +73,8 @@ export default function GestionEmpresa({ volverAlDashboard }) {
 
   const guardarDatosEmpresa = async (e) => {
     e.preventDefault();
-    
-    // Guardamos el límite de búsqueda localmente para evitar depender de si la BD tiene esa columna o no
+
+    // Guardamos el límite de búsqueda localmente
     localStorage.setItem('asadel_max_search', datosEmpresa.max_resultados_busqueda);
 
     try {
@@ -85,6 +85,15 @@ export default function GestionEmpresa({ volverAlDashboard }) {
       });
 
       if (res.ok) {
+        // --- NUEVO: AVISAR AL SISTEMA Y GUARDAR EN MEMORIA ---
+        // Guardamos el logo en local temporalmente para que App.tsx lo lea rápido
+        if (datosEmpresa.logo) {
+          localStorage.setItem('asadel_logo_temp', datosEmpresa.logo);
+        }
+        // Disparamos un evento personalizado para que las otras pantallas se den cuenta
+        window.dispatchEvent(new Event('empresa-actualizada'));
+        // ---------------------------------------------------
+
         alert('✅ ¡Datos y configuración de la empresa guardados correctamente!');
       } else {
         alert('Error al guardar datos de la empresa.');

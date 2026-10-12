@@ -8,6 +8,8 @@
   padding: 15px;
   font-family: Arial, sans-serif;
   box-sizing: border-box;
+  /* AGREGA ESTA LÍNEA PARA PERMITIR EL SCROLL INTERNO: */
+  overflow-y: auto; 
 }
 
 .gp-header {
@@ -199,8 +201,21 @@
   font-weight: bold;
 }
 
-.gp-table tr:hover {
-  background-color: #f8f9fa;
+/* Agregamos transición suave y el efecto hover estilo Ventas */
+.gp-table tbody tr {
+  transition: all 0.15s ease;
+}
+
+.gp-table tbody tr:hover {
+  cursor: pointer;
+  background-color: #bfdbfe; /* Fondo azul intenso */
+  box-shadow: inset 4px 0 0 0 #2563eb; /* Línea gruesa azul a la izquierda */
+}
+
+/* Oscurecemos el texto cuando el ratón está encima para que contraste con el azul */
+.gp-table tbody tr:hover td,
+.gp-table tbody tr:hover td strong {
+  color: #0f172a;
 }
 
 .col-img {
@@ -893,6 +908,58 @@
 
 .kit-autocomplete-item:last-child {
   border-bottom: none;
+}
+
+/* =========================================================
+   ESTADÍSTICAS DE INVENTARIO (TOTALES DINÁMICOS)
+   ========================================================= */
+.gp-inventory-stats {
+  display: flex;
+  gap: 15px;
+  margin-top: 15px;
+  margin-bottom: 15px;
+}
+
+.stat-card {
+  flex: 1;
+  background-color: #ffffff;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  padding: 14px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+  border-left: 5px solid #cbd5e1; /* Color base por si acaso */
+}
+
+.stat-card:nth-child(1) { border-left-color: #0f172a; } /* Costo (Negro/Gris Oscuro) */
+.stat-card:nth-child(2) { border-left-color: #0284c7; } /* Ventas (Azul) */
+.stat-card:nth-child(3) { border-left-color: #16a34a; } /* Ganancia (Verde) */
+
+.stat-card span {
+  font-size: 11px;
+  font-weight: 800;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.stat-card strong {
+  font-size: 22px;
+  font-weight: 800;
+}
+
+.stat-costo { color: #0f172a; }
+.stat-ventas { color: #0284c7; }
+.stat-ganancia { color: #16a34a; }
+
+/* Para celulares */
+@media (max-width: 768px) {
+  .gp-inventory-stats {
+    flex-direction: column;
+    gap: 8px;
+  }
 }
 
 /* =========================================================

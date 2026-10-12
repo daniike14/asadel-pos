@@ -80,6 +80,62 @@ export default function PuntoDeVenta() {
     cantidad: 1
   });
 
+// --- NUEVO: ESTADOS DE APERTURA DE CAJA ---
+  const [cajaAbierta, setCajaAbierta] = useState(() => {
+    const fechaHoy = new Date().toISOString().split('T')[0];
+    return !!localStorage.getItem(`caja_abierta_${fechaHoy}`);
+  });
+  const [modalApertura, setModalApertura] = useState(false);
+  const [fondoInicial, setFondoInicial] = useState('');
+
+  useEffect(() => {
+    const verificarApertura = () => {
+      // Usamos un formato de fecha universal a prueba de fallos (YYYY-MM-DD)
+      const fechaHoy = new Date().toISOString().split('T')[0];
+      const abierta = localStorage.getItem(`caja_abierta_${fechaHoy}`);
+      
+      if (!abierta) {
+        setCajaAbierta(false);
+        setModalApertura(true);
+      } else {
+        setCajaAbierta(true);
+        setModalApertura(false);
+      }
+    };
+    
+    verificarApertura();
+    window.addEventListener('focus', verificarApertura);
+    return () => window.removeEventListener('focus', verificarApertura);
+  }, []);
+
+  const registrarApertura = async (e) => {
+    e.preventDefault();
+    const monto = parseFloat(fondoInicial) || 0;
+    
+    try {
+      if (monto > 0) {
+        await fetch(`${API_URL}/api/movimientos-caja`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            tipo: 'entrada',
+            monto: monto,
+            motivo: 'Fondo de caja inicial',
+            cajero: 'Turno 1' 
+          })
+        });
+      }
+      
+      const fechaHoy = new Date().toISOString().split('T')[0];
+      localStorage.setItem(`caja_abierta_${fechaHoy}`, monto.toString());
+      setCajaAbierta(true);
+      setModalApertura(false);
+      cargarDatosBD();
+    } catch (err) {
+      alert('Error al registrar la apertura de caja.');
+    }
+  };
+
   // Alerta discreta de Stock Mínimo
   const [alertaStock, setAlertaStock] = useState(null);
   const timerAlertaRef = useRef(null);
@@ -995,6 +1051,7 @@ export default function PuntoDeVenta() {
           setMostrarModalEditarItem(false);
           setModalActivo(null);
           setImagenVisorFlotante(null);
+          setTimeout(() => inputBusquedaRef.current?.focus(), 100);
         } else if (carrito.length > 0) {
           event.preventDefault();
           abrirModalCobro();
@@ -1078,9 +1135,20 @@ export default function PuntoDeVenta() {
         <div className="pos-user-info">
           <span>[Cajero: Turno 1]</span>
         </div>
-      </header>
+</header>
 
-      <form className="pos-search-bar" onSubmit={ejecutarBusqueda}>
+      {!cajaAbierta ? (
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', backgroundColor: '#ffffff', borderRadius: '8px', border: '1px dashed #cbd5e1', margin: '15px 0' }}>
+          <span style={{ fontSize: '50px', marginBottom: '15px' }}>🔒</span>
+          <h2 style={{ color: '#0f172a', margin: '0 0 8px 0' }}>Caja Cerrada</h2>
+          <p style={{ color: '#64748b', marginBottom: '20px' }}>Debes abrir la caja y declarar el fondo inicial para comenzar a vender.</p>
+          <button className="btn-main btn-pay" style={{ width: 'auto', padding: '12px 24px' }} onClick={() => setModalApertura(true)}>
+            Hacer Apertura de Caja
+          </button>
+        </div>
+      ) : (
+        <>
+          <form className="pos-search-bar" onSubmit={ejecutarBusqueda}>
         <label htmlFor="search-input">BÚSQUEDA:</label>
         <div className="pos-search-wrapper" ref={contenedorBusquedaRef}>
           <input
@@ -1300,7 +1368,9 @@ export default function PuntoDeVenta() {
             <button className="btn-main btn-hold" onClick={guardarVentaEnEspera} disabled={carrito.length === 0}> TICKET PEND. </button>
           </div>
         </div>
-      </div>
+</div>
+        </>
+      )}
 
       {/* MODAL ARTÍCULO NO INVENTARIADO / VENTA RÁPIDA */}
       {modalActivo === 'rapido' && (
@@ -1581,7 +1651,8 @@ export default function PuntoDeVenta() {
           <div className="modal-content modal-cotizacion-content">
             <div className="modal-header">
               <h2>NOTA DE VENTA / REMISIÓN</h2>
-              <button className="btn-close-modal" onClick={() => { setModalActivo(null); setVentaFinalizada(null); }}>✕</button>
+              {/* Cámbialo para que quede así: */}
+              <button className="btn-close-modal" onClick={() => { setModalActivo(null); setVentaFinalizada(null); setTimeout(() => inputBusquedaRef.current?.focus(), 100); }}>✕</button>
             </div>
             
             <div className="modal-body ticket-preview">
@@ -1716,7 +1787,7 @@ export default function PuntoDeVenta() {
             </div>
 
             <div className="modal-footer no-print">
-              <button type="button" className="btn-cancel-modal" onClick={() => { setModalActivo(null); setVentaFinalizada(null); }}>Cerrar</button>
+              <button type="button" className="btn-cancel-modal" onClick={() => { setModalActivo(null); setVentaFinalizada(null); setTimeout(() => inputBusquedaRef.current?.focus(), 100); }}>Cerrar</button>
               <button type="button" className="btn-confirm-modal" onClick={() => window.print()}>🖨️ Mandar a Imprimir</button>
             </div>
           </div>
@@ -2160,6 +2231,47 @@ export default function PuntoDeVenta() {
           </div>
         </div>
       )}
+
+{/* MODAL DE APERTURA DE CAJA (OBLIGATORIO AL INICIO) */}
+      {modalApertura && (
+        <div className="modal-overlay" style={{ zIndex: 9999 }}>
+          <div className="modal-content" style={{ width: '400px' }}>
+            <div className="modal-header">
+              <h2>🌅 APERTURA DE CAJA</h2>
+              {/* NUEVO: Botón de la X para cerrar */}
+              <button type="button" className="btn-close-modal" onClick={() => setModalApertura(false)}>✕</button>
+            </div>
+            <form onSubmit={registrarApertura} className="modal-body">
+              <p style={{ margin: 0, fontSize: '13px', color: '#64748b' }}>
+                Es tu primer ingreso del día al sistema. Por favor, indica con cuánto efectivo (fondo de caja) estás abriendo el turno.
+              </p>
+              <div className="field-group" style={{ marginTop: '10px' }}>
+                <label>Fondo Inicial / Caja de Inicio ($):</label>
+                <input
+                  type="number"
+                  step="0.5"
+                  min="0"
+                  required
+                  placeholder="Ej. 500.00"
+                  value={fondoInicial}
+                  onChange={(e) => setFondoInicial(e.target.value)}
+                  autoFocus
+                />
+              </div>
+              <div className="modal-footer" style={{ marginTop: '10px' }}>
+                {/* NUEVO: Botón de Cancelar */}
+                <button type="button" className="btn-cancel-modal" onClick={() => setModalApertura(false)}>Cancelar</button>
+                <button type="submit" className="btn-confirm-modal">
+                  Abrir Caja y Comenzar Turno
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
     </div>
+
+    
   );
 }

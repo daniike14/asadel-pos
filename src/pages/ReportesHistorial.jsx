@@ -30,8 +30,11 @@ const formatearFechaHoraLegible = (fechaHoraStr) => {
   return isNaN(d.getTime()) ? fechaHoraStr : d.toLocaleString();
 };
 
+
+
 export default function ReportesHistorial({ volverAlDashboard }) {
-  const [pestañaActiva, setPestañaActiva] = useState('ventas'); // 'ventas' | 'movimientos' | 'cortes' | 'resurtido'
+  const [pestañaActiva, setPestañaActiva] = useState('ventas'); // 'ventas' | 'movimientos' | 'cortes' | 'resurtido' | 'cierres'
+  const [cierresGlobales, setCierresGlobales] = useState([]); // <-- NUEVO ESTADO
   const [ventas, setVentas] = useState([]);
   const [cortes, setCortes] = useState([]);
   const [movimientos, setMovimientos] = useState([]);
@@ -83,15 +86,18 @@ export default function ReportesHistorial({ volverAlDashboard }) {
 
   const cargarDatos = async () => {
     try {
-      const [resVentas, resCortes, resMovs, resEmpresa, resProvs, resResurtido] = await Promise.all([
+      const [resVentas, resCortes, resMovs, resEmpresa, resProvs, resResurtido, resCierres] = await Promise.all([
         fetch(`${API_URL}/api/reportes/ventas`),
         fetch(`${API_URL}/api/reportes/cortes`),
         fetch(`${API_URL}/api/movimientos-caja`),
         fetch(`${API_URL}/api/empresa`),
         fetch(`${API_URL}/api/proveedores`),
-        fetch(`${API_URL}/api/reportes/resurtido`)
+        fetch(`${API_URL}/api/reportes/resurtido`),
+        fetch(`${API_URL}/api/cierre-global`) // <-- NUEVA LLAMADA
       ]);
 
+      // ... y abajito:
+      if (resCierres.ok) setCierresGlobales(await resCierres.json()); // <-- GUARDAR RESULTADO
       if (resVentas.ok) setVentas(await resVentas.json());
       if (resCortes.ok) setCortes(await resCortes.json());
       if (resMovs.ok) setMovimientos(await resMovs.json());
@@ -249,6 +255,16 @@ export default function ReportesHistorial({ volverAlDashboard }) {
     return { esperados, declarados, diferenciaTotal, totalCortes: cortesFiltrados.length };
   }, [cortesFiltrados]);
 
+  // --- NUEVO: CÁLCULO DE TOTALES PARA EL CIERRE GLOBAL (CORTE Z) ---
+  const totalesCierresZ = useMemo(() => {
+    return cierresGlobales.reduce((acc, c) => {
+      acc.ventas += (c.ventas_dia || 0);
+      acc.ganancias += (c.ganancia_estimada || 0);
+      return acc;
+    }, { ventas: 0, ganancias: 0 });
+  }, [cierresGlobales]);
+  // -----------------------------------------------------------------
+
   // Métricas del pedido de resurtido
   const metricasResurtido = useMemo(() => {
     const totalProductos = resurtidoFiltrado.length;
@@ -366,6 +382,12 @@ export default function ReportesHistorial({ volverAlDashboard }) {
             onClick={() => setPestañaActiva('cortes')}
           >
             📊 Cortes de Turno ({cortesFiltrados.length})
+          </button>
+          <button 
+            className={`tab-btn ${pestañaActiva === 'cierres' ? 'active' : ''}`}
+            onClick={() => setPestañaActiva('cierres')}
+          >
+            🌙 Cierres Z / Globales ({cierresGlobales.length})
           </button>
           <button 
             className={`tab-btn ${pestañaActiva === 'resurtido' ? 'active' : ''}`}
@@ -583,6 +605,64 @@ export default function ReportesHistorial({ volverAlDashboard }) {
         </div>
       )}
 
+{/* NUEVA TABLA: CIERRES GLOBALES (CORTE Z) */}
+      {/* NUEVA TABLA: CIERRES GLOBALES (CORTE Z) */}
+      {pestañaActiva === 'cierres' && (
+        <div className="reportes-table-wrapper">
+          <table className="reportes-table tabla-cierres">
+            <thead>
+              <tr>
+                <th>Folio</th>
+                <th>Fecha Cierre</th>
+                <th style={{ textAlign: 'right' }}>Caja Inicial</th>
+                <th style={{ textAlign: 'right' }}>Billetes</th>
+                <th style={{ textAlign: 'right' }}>Morralla (Fondo)</th>
+                <th style={{ textAlign: 'right' }}>Total en Caja</th>
+                <th style={{ textAlign: 'right', color: '#0284c7' }}>Ventas del Día</th>
+                <th style={{ textAlign: 'right', color: '#16a34a' }}>Ganancias (53%)</th>
+              </tr>
+            </thead>
+            <tbody>
+              {cierresGlobales.map((c) => (
+                <tr key={c.id}>
+                  <td><strong>{c.folio}</strong></td>
+                  <td>{formatearFechaHoraLegible(c.fecha_hora)}</td>
+                  <td style={{ textAlign: 'right' }}>${(c.caja_inicial || 0).toFixed(2)}</td>
+                  <td style={{ textAlign: 'right' }}>${(c.billetes || 0).toFixed(2)}</td>
+                  <td style={{ textAlign: 'right' }}>${(c.morralla || 0).toFixed(2)}</td>
+                  <td style={{ textAlign: 'right', fontWeight: 'bold' }}>${(c.total_fisico || 0).toFixed(2)}</td>
+                  <td style={{ textAlign: 'right', fontWeight: 'bold', color: '#0284c7' }}>
+                    ${(c.ventas_dia || 0).toFixed(2)}
+                  </td>
+                  <td style={{ textAlign: 'right', fontWeight: 'bold', color: '#16a34a', fontSize: '14px' }}>
+                    ${(c.ganancia_estimada || 0).toFixed(2)}
+                  </td>
+                </tr>
+              ))}
+              {cierresGlobales.length === 0 && (
+                <tr><td colSpan="8" style={{ textAlign: 'center', padding: '30px', color: '#94a3b8' }}>No hay cierres globales (Corte Z) registrados aún.</td></tr>
+              )}
+            </tbody>
+            {/* NUEVA FILA DE TOTALES TIPO EXCEL */}
+            {cierresGlobales.length > 0 && (
+              <tfoot>
+                <tr style={{ backgroundColor: '#f1f5f9', borderTop: '2px solid #cbd5e1' }}>
+                  <td colSpan="6" style={{ textAlign: 'right', fontWeight: '900', fontSize: '14px', color: '#0f172a', padding: '12px' }}>
+                    TOTALES DEL PERIODO:
+                  </td>
+                  <td style={{ textAlign: 'right', fontWeight: '900', fontSize: '16px', color: '#0284c7', padding: '12px' }}>
+                    ${totalesCierresZ.ventas.toFixed(2)}
+                  </td>
+                  <td style={{ textAlign: 'right', fontWeight: '900', fontSize: '16px', color: '#16a34a', padding: '12px' }}>
+                    ${totalesCierresZ.ganancias.toFixed(2)}
+                  </td>
+                </tr>
+              </tfoot>
+            )}
+          </table>
+        </div>
+      )}
+
       {pestañaActiva === 'resurtido' && (
         <div className="reportes-metrics-grid">
           <div className="metric-box">
@@ -682,38 +762,55 @@ export default function ReportesHistorial({ volverAlDashboard }) {
       {/* TABLA DE MOVIMIENTOS */}
       {pestañaActiva === 'movimientos' && (
         <div className="reportes-table-wrapper">
-          <table className="reportes-table">
+<table className="reportes-table">
             <thead>
               <tr>
-                <th style={{ width: '80px' }}>ID</th>
-                <th>Fecha y Hora</th>
-                <th>Tipo</th>
-                <th>Concepto / Motivo</th>
-                <th>Cajero</th>
-                <th style={{ textAlign: 'right' }}>Monto</th>
+                <th>Folio / Tipo</th>
+                <th>Fecha/Hora</th>
+                <th style={{ textAlign: 'right' }}>Declarado Físico</th>
+                <th style={{ textAlign: 'right' }}>Diferencia</th>
+                <th>Observaciones / Detalle (Billetes, Morralla)</th>
+                <th style={{ width: '80px', textAlign: 'center' }}>Acciones</th>
               </tr>
             </thead>
             <tbody>
-              {movimientosFiltrados.map((m) => (
-                <tr key={m.id}>
-                  <td>#{m.id}</td>
-                  <td>{formatearFechaHoraLegible(m.fecha_hora)}</td>
+              {cortesFiltrados.map((c) => (
+                <tr key={c.id}>
                   <td>
-                    <span className={`tag-movimiento ${m.tipo}`}>
-                      {m.tipo === 'entrada' ? '⬇ Entrada' : '⬆ Salida'}
+                    <strong>{c.folio}</strong>
+                    <div style={{ fontSize: '11px', color: c.cajero.includes('(Z)') ? '#0f172a' : '#64748b', fontWeight: c.cajero.includes('(Z)') ? 'bold' : 'normal' }}>
+                      {c.cajero}
+                    </div>
+                  </td>
+                  <td>{formatearFechaHoraLegible(c.fecha_hora)}</td>
+                  <td style={{ textAlign: 'right', fontWeight: 'bold' }}>
+                    ${(c.saldo_declarado || 0).toFixed(2)}
+                  </td>
+                  <td style={{ textAlign: 'right' }}>
+                    <span style={{
+                      color: c.diferencia === 0 ? '#16a34a' : (c.diferencia > 0 ? '#0284c7' : '#dc2626'),
+                      fontWeight: 'bold'
+                    }}>
+                      {c.diferencia > 0 ? '+' : ''}{(c.diferencia || 0).toFixed(2)}
                     </span>
                   </td>
-                  <td><strong>{m.motivo}</strong></td>
-                  <td>{m.cajero}</td>
-                  <td style={{ textAlign: 'right', fontWeight: 'bold' }}>
-                    <span style={{ color: m.tipo === 'entrada' ? '#0284c7' : '#dc2626' }}>
-                      {m.tipo === 'entrada' ? '+' : '-'}${m.monto.toFixed(2)}
-                    </span>
+                  <td style={{ maxWidth: '300px', fontSize: '11px', color: '#475569', fontStyle: 'italic', lineHeight: '1.4' }}>
+                    {/* Aquí se imprimirá el texto exacto de billetes, morralla y ganancias del corte Z */}
+                    {c.observaciones || '—'}
+                  </td>
+                  <td style={{ textAlign: 'center' }}>
+                    <button className="btn-accion-tabla" onClick={() => abrirTicketCorte(c)}>
+                      🖨️ Ver
+                    </button>
                   </td>
                 </tr>
               ))}
-              {movimientosFiltrados.length === 0 && (
-                <tr><td colSpan="6" style={{ textAlign: 'center', padding: '30px', color: '#94a3b8' }}>No se encontraron entradas ni salidas de dinero registradas.</td></tr>
+              {cortesFiltrados.length === 0 && (
+                <tr>
+                  <td colSpan="6" style={{ textAlign: 'center', padding: '30px', color: '#94a3b8' }}>
+                    No hay cortes de caja registrados en este rango.
+                  </td>
+                </tr>
               )}
             </tbody>
           </table>

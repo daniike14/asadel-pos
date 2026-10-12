@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import logoAsadel from '../assets/Logo.jpg';
+import logoDefault from '../assets/Logo.jpg';
 import './GestionProductos.css';
 import { API_URL } from '../config';
 
@@ -47,7 +47,18 @@ export default function GestionProductos() {
     const fileInputRef = useRef(null);
     const kitBuscadorRef = useRef(null);
 
-    const [vista, setVista] = useState('catalogo'); // 'catalogo' | 'formulario' | 'promociones' | 'kits' | 'gestion_catalogos'
+    const [vista, setVista] = useState('catalogo');
+    const [logoEmpresa, setLogoEmpresa] = useState(logoDefault);
+    useEffect(() => {
+        const logoActual = localStorage.getItem('asadel_logo_temp');
+        if (logoActual) setLogoEmpresa(logoActual);
+        const escucharCambioEmpresa = () => {
+            const logoNuevo = localStorage.getItem('asadel_logo_temp');
+            if (logoNuevo) setLogoEmpresa(logoNuevo);
+        };
+        window.addEventListener('empresa-actualizada', escucharCambioEmpresa);
+        return () => window.removeEventListener('empresa-actualizada', escucharCambioEmpresa);
+    }, []); // 'catalogo' | 'formulario' | 'promociones' | 'kits' | 'gestion_catalogos'
     const [pestanaActiva, setPestanaActiva] = useState('generales');
 
     const [departamentos, setDepartamentos] = useState([]);
@@ -135,6 +146,22 @@ export default function GestionProductos() {
         if (vista === 'catalogo' && busquedaInputRef.current) {
             setTimeout(() => busquedaInputRef.current?.focus(), 50);
         }
+
+        // MAGIA: Listener global para regresar el focus si el usuario empieza a teclear
+        const manejarTecladoGlobal = (e) => {
+            const tagActivo = document.activeElement?.tagName;
+            const estaEnInput = tagActivo === 'INPUT' || tagActivo === 'TEXTAREA' || tagActivo === 'SELECT';
+
+            // Si estamos en el catálogo, NO está adentro de una ventana de edición, y presiona una letra/número normal
+            if (vista === 'catalogo' && !estaEnInput && e.key.length === 1) {
+                if (busquedaInputRef.current) {
+                    busquedaInputRef.current.focus();
+                }
+            }
+        };
+
+        window.addEventListener('keydown', manejarTecladoGlobal);
+        return () => window.removeEventListener('keydown', manejarTecladoGlobal);
     }, [vista]);
 
     // Filtrado de sugerencias de componentes de kit
@@ -883,6 +910,25 @@ export default function GestionProductos() {
         return 0;
     });
 
+    // --- NUEVO: CÁLCULO DE INVENTARIO Y GANANCIAS ---
+    const statsInventario = productosFiltrados.reduce((acc, prod) => {
+        // Ignoramos los servicios porque no tienen inventario físico
+        if (prod.esServicio) return acc;
+        
+        const stock = parseFloat(prod.invActual) || 0;
+        if (stock <= 0) return acc; // Si no hay stock, no suma dinero
+
+        const costo = parseFloat(prod.costo) || 0;
+        const precio = parseFloat(prod.precioVenta) || 0;
+
+        acc.costoTotal += (costo * stock);
+        acc.ventasTotales += (precio * stock);
+        return acc;
+    }, { costoTotal: 0, ventasTotales: 0 });
+
+    const gananciaTotal = statsInventario.ventasTotales - statsInventario.costoTotal;
+    // ------------------------------------------------
+
     const totalItems = productosOrdenados.length;
     const totalPaginas = Math.ceil(totalItems / itemsPorPagina) || 1;
     const indiceInicial = (paginaActual - 1) * itemsPorPagina;
@@ -898,7 +944,7 @@ export default function GestionProductos() {
         <div className="gp-container">
             <header className="gp-header">
                 <div className="gp-branding">
-                    <img src={logoAsadel} alt="Logo ASADEL" style={{ height: '35px' }} />
+                    <img src={logoEmpresa} alt="Logo ASADEL" style={{ height: '35px' }} />
                     <h2>
                         {vista === 'catalogo' ? 'CATÁLOGO DE PRODUCTOS' : 
                          vista === 'promociones' ? 'GESTIÓN DE PROMOCIONES' : 
@@ -1363,6 +1409,32 @@ export default function GestionProductos() {
                                 placeholder="🔍 Buscar por nombre, código, depto, categoría..."
                                 value={busqueda}
                                 onChange={(e) => setBusqueda(e.target.value)}
+                                /* AGREGA TODO ESTE BLOQUE onKeyDown: */
+                                onKeyDown={(e) => {
+                                    // Apuntamos directamente a la capa blanca que contiene toda la vista del catálogo
+                                    const contenedorPrincipal = document.querySelector('.gp-container');
+
+                                    let scrollPixels = 0;
+                                    if (e.key === 'ArrowDown') scrollPixels = 150;
+                                    else if (e.key === 'ArrowUp') scrollPixels = -150;
+                                    else if (e.key === 'PageDown') scrollPixels = 600;
+                                    else if (e.key === 'PageUp') scrollPixels = -600;
+
+                                    if (scrollPixels !== 0 && contenedorPrincipal) {
+                                        e.preventDefault();
+                                        // Le indicamos al navegador que mueva la vista de forma suave
+                                        contenedorPrincipal.scrollBy({
+                                            top: scrollPixels,
+                                            behavior: 'smooth'
+                                        });
+
+                                        // Fallback por si la estructura de Tauri no reconoce smooth
+                                        window.scrollBy({
+                                            top: scrollPixels,
+                                            behavior: 'smooth'
+                                        });
+                                    }
+                                }}
                             />
                         </div>
                         <div className="filter-group">
@@ -1379,7 +1451,24 @@ export default function GestionProductos() {
                                 <option value={10}>10 por pág.</option>
                                 <option value={20}>20 por pág.</option>
                                 <option value={50}>50 por pág.</option>
+                                {/* AGREGA ESTA LÍNEA: */}
+                                <option value={1000}>1000 por pág. (Todos)</option>
                             </select>
+                        </div>
+                    </div>
+
+                    <div className="gp-inventory-stats">
+                        <div className="stat-card">
+                            <span>Costo de Inventario</span>
+                            <strong className="stat-costo">${statsInventario.costoTotal.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</strong>
+                        </div>
+                        <div className="stat-card">
+                            <span>Ventas Esperadas</span>
+                            <strong className="stat-ventas">${statsInventario.ventasTotales.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</strong>
+                        </div>
+                        <div className="stat-card">
+                            <span>Margen de Ganancia</span>
+                            <strong className="stat-ganancia">${gananciaTotal.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</strong>
                         </div>
                     </div>
 

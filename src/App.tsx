@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import PuntoDeVenta from "./pages/PuntoDeVenta";
 import GestionProductos from "./pages/GestionProductos";
 import Dashboard from "./pages/Dashboard";
@@ -8,6 +8,7 @@ import GestionEmpresa from "./pages/GestionEmpresa";
 import GestionBaseDatos from "./pages/GestionBaseDatos";
 import Login from "./pages/Login";
 import logoAsadel from "./assets/Logo.jpg";
+import { API_URL } from "./config"; // <--- ¡ESTO ERA LO QUE FALTABA!
 import "./App.css";
 
 interface UsuarioSesion {
@@ -18,10 +19,52 @@ interface UsuarioSesion {
 }
 
 function App() {
+
   const [usuarioActual, setUsuarioActual] = useState<UsuarioSesion | null>(() => {
     const sesionGuardada = localStorage.getItem('asadel_usuario_sesion');
     return sesionGuardada ? JSON.parse(sesionGuardada) : null;
   });
+
+  const [logoEmpresa, setLogoEmpresa] = useState(() => {
+    const logoGuardado = localStorage.getItem('asadel_logo_temp');
+    return logoGuardado || logoAsadel;
+  }); // El logo inicial por defecto
+
+  useEffect(() => {
+    // 1. Al cargar la app por primera vez, pedimos el logo de la base de datos
+    const cargarLogoInicial = async () => {
+      try {
+        const res = await fetch(`${API_URL}/api/empresa`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data.logo) {
+            setLogoEmpresa(data.logo);
+            localStorage.setItem('asadel_logo_temp', data.logo);
+          } else {
+            setLogoEmpresa(logoAsadel);
+            localStorage.removeItem('asadel_logo_temp');
+          }
+        }
+      } catch (e) {
+        console.error('Error al cargar el logo inicial:', e);
+      }
+    };
+    cargarLogoInicial();
+
+    // 2. Nos quedamos escuchando si GestionEmpresa lanza el aviso de que lo cambiaron
+    const escucharCambioEmpresa = () => {
+      const logoNuevo = localStorage.getItem('asadel_logo_temp');
+      if (logoNuevo) {
+        setLogoEmpresa(logoNuevo);
+      } else {
+        setLogoEmpresa(logoAsadel);
+      }
+    };
+    
+    window.addEventListener('empresa-actualizada', escucharCambioEmpresa);
+    return () => window.removeEventListener('empresa-actualizada', escucharCambioEmpresa);
+  }, []);
+
   const [moduloActivo, setModuloActivo] = useState<string>("dashboard");
   const [menuMovilAbierto, setMenuMovilAbierto] = useState<boolean>(false);
 
@@ -78,7 +121,7 @@ function App() {
       {/* Menú Lateral (Sidebar) */}
       <aside className={`sidebar ${menuMovilAbierto ? "open" : ""}`}>
         <div className="sidebar-header">
-          <img src={logoAsadel} alt="ASADEL" className="sidebar-logo" />
+          <img src={logoEmpresa} alt="ASADEL" className="sidebar-logo" />
         </div>
         <div
           style={{
@@ -113,7 +156,7 @@ function App() {
               className={moduloActivo === "dashboard" ? "active" : ""}
               onClick={() => seleccionarModulo("dashboard")}
             >
-              Dashboard
+              DASHBOARD
             </button>
           )}
           <button

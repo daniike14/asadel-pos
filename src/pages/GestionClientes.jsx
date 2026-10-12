@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import logoAsadel from '../assets/Logo.jpg';
+import logoDefault from '../assets/Logo.jpg';
 import './GestionClientes.css';
 import { API_URL } from '../config';
 
@@ -7,6 +7,17 @@ export default function GestionClientes({ volverAlDashboard }) {
   const [clientes, setClientes] = useState([]);
   const [busqueda, setBusqueda] = useState('');
   const [cargando, setCargando] = useState(false);
+  const [logoEmpresa, setLogoEmpresa] = useState(logoDefault);
+  useEffect(() => {
+    const logoActual = localStorage.getItem('asadel_logo_temp');
+    if (logoActual) setLogoEmpresa(logoActual);
+    const escucharCambioEmpresa = () => {
+        const logoNuevo = localStorage.getItem('asadel_logo_temp');
+        if (logoNuevo) setLogoEmpresa(logoNuevo);
+    };
+    window.addEventListener('empresa-actualizada', escucharCambioEmpresa);
+    return () => window.removeEventListener('empresa-actualizada', escucharCambioEmpresa);
+  }, []);
 
   // Estados de Modales
   const [modalAbierto, setModalAbierto] = useState(null); // 'nuevo' | 'editar' | 'historial' | 'configuracion'
@@ -207,7 +218,7 @@ export default function GestionClientes({ volverAlDashboard }) {
       {/* Encabezado */}
       <header className="gc-header">
         <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-          <img src={logoAsadel} alt="Logo ASADEL" style={{ height: '30px' }} />
+          <img src={logoEmpresa} alt="Logo ASADEL" style={{ height: '30px' }} />
           <h2 style={{ margin: 0, fontSize: '16px' }}>CLIENTES Y MONEDERO DE LEALTAD</h2>
         </div>
         <div style={{ display: 'flex', gap: '8px' }}>

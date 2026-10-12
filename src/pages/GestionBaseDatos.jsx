@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import logoAsadel from '../assets/Logo.jpg';
+import logoDefault from '../assets/Logo.jpg';
 import './GestionBaseDatos.css';
 import { API_URL } from '../config';
 
@@ -13,6 +13,17 @@ export default function GestionBaseDatos({ volverAlDashboard }) {
   });
   const [frecuenciaSeleccionada, setFrecuenciaSeleccionada] = useState('diario');
   const [procesando, setProcesando] = useState(false);
+  const [logoEmpresa, setLogoEmpresa] = useState(logoDefault);
+  useEffect(() => {
+    const logoActual = localStorage.getItem('asadel_logo_temp');
+    if (logoActual) setLogoEmpresa(logoActual);
+    const escucharCambioEmpresa = () => {
+        const logoNuevo = localStorage.getItem('asadel_logo_temp');
+        if (logoNuevo) setLogoEmpresa(logoNuevo);
+    };
+    window.addEventListener('empresa-actualizada', escucharCambioEmpresa);
+    return () => window.removeEventListener('empresa-actualizada', escucharCambioEmpresa);
+  }, []);
   const fileInputDbRef = useRef(null);
 
   const cargarEstadoBD = async () => {
@@ -125,7 +136,7 @@ export default function GestionBaseDatos({ volverAlDashboard }) {
       {/* Encabezado */}
       <header className="bd-header">
         <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-          <img src={logoAsadel} alt="Logo" style={{ height: '32px' }} />
+          <img src={logoEmpresa} alt="Logo" style={{ height: '32px' }} />
           <h2 style={{ margin: 0, fontSize: '16px' }}>GESTIÓN Y RESPALDO DE BASE DE DATOS</h2>
         </div>
         {volverAlDashboard && (
