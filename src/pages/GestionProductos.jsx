@@ -6,6 +6,12 @@ import { API_URL } from '../config';
 const fechaHoyLocal = () => new Date().toISOString().split('T')[0];
 const generarCodigoKitAutomatico = () => `KIT-${Date.now().toString().slice(-5)}`;
 
+// Función mágica para poner en mayúscula la primera letra de cada palabra
+const formatoTitulo = (texto) => {
+    if (!texto) return '';
+    return texto.toLowerCase().replace(/(?:^|\s)\w/g, (letra) => letra.toUpperCase());
+};
+
 const estadoInicialForm = {
     id: null,
     codigoBarras: '',
@@ -63,7 +69,9 @@ export default function GestionProductos() {
     const [nuevaPromoTipo, setNuevaPromoTipo] = useState('porcentaje');
     const [nuevaPromoValor, setNuevaPromoValor] = useState('');
 
-    // Formulario de Kits
+    // Formulario y Búsqueda de Kits
+    const [kitEditandoId, setKitEditandoId] = useState(null); // NUEVO ESTADO PARA SABER SI ESTAMOS EDITANDO
+    const [busquedaKitsTabla, setBusquedaKitsTabla] = useState(''); // NUEVO ESTADO PARA BUSCAR KITS
     const [nuevoKitCodigo, setNuevoKitCodigo] = useState(generarCodigoKitAutomatico());
     const [nuevoKitNombre, setNuevoKitNombre] = useState('');
     const [nuevoKitPrecio, setNuevoKitPrecio] = useState('');
@@ -286,6 +294,32 @@ export default function GestionProductos() {
         setKitComponentes(kitComponentes.filter((it) => it.producto_id !== productoId));
     };
 
+    // Función que carga los datos de un kit existente al formulario para Editarlo
+    const handleEditarKit = (kit) => {
+        setKitEditandoId(kit.id);
+        setNuevoKitCodigo(kit.codigo);
+        setNuevoKitNombre(kit.nombre);
+        setNuevoKitPrecio(kit.precio);
+        
+        const componentesEdit = (kit.items || []).map(it => ({
+            producto_id: it.producto_id,
+            nombre: it.nombre,
+            precioUnitario: it.precioVenta,
+            cantidad: it.cantidad
+        }));
+        
+        setKitComponentes(componentesEdit);
+        window.scrollTo({ top: 0, behavior: 'smooth' }); // Te sube la pantalla al form
+    };
+
+    const cancelarEdicionKit = () => {
+        setKitEditandoId(null);
+        setNuevoKitCodigo(generarCodigoKitAutomatico());
+        setNuevoKitNombre('');
+        setNuevoKitPrecio('');
+        setKitComponentes([]);
+    };
+
     const guardarKit = async (e) => {
         e.preventDefault();
         if (!nuevoKitCodigo.trim() || !nuevoKitNombre.trim() || !nuevoKitPrecio) {
@@ -296,7 +330,7 @@ export default function GestionProductos() {
         }
 
         const payload = {
-            codigo: nuevoKitCodigo.trim(),
+            codigo: nuevoKitCodigo.trim().toUpperCase(),
             nombre: nuevoKitNombre.trim(),
             precio: parseFloat(nuevoKitPrecio),
             items: kitComponentes.map((it) => ({
@@ -305,19 +339,19 @@ export default function GestionProductos() {
             }))
         };
 
+        const url = kitEditandoId ? `${API_URL}/api/kits/${kitEditandoId}` : `${API_URL}/api/kits`;
+        const method = kitEditandoId ? 'PUT' : 'POST';
+
         try {
-            const res = await fetch(`${API_URL}/api/kits`, {
-                method: 'POST',
+            const res = await fetch(url, {
+                method: method,
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload)
             });
 
             if (res.ok) {
-                alert('✅ ¡Kit creado exitosamente!');
-                setNuevoKitCodigo(generarCodigoKitAutomatico());
-                setNuevoKitNombre('');
-                setNuevoKitPrecio('');
-                setKitComponentes([]);
+                alert(`✅ ¡Kit ${kitEditandoId ? 'actualizado' : 'creado'} exitosamente!`);
+                cancelarEdicionKit();
                 cargarCatalogos();
             } else {
                 alert('Error al guardar el kit en el servidor.');
@@ -343,6 +377,12 @@ export default function GestionProductos() {
     const costoSumaComponentes = kitComponentes.reduce(
         (acc, it) => acc + (it.precioUnitario || 0) * (it.cantidad || 1),
         0
+    );
+
+    // Filtrado del buscador de Kits Registrados
+    const kitsFiltrados = kits.filter(k => 
+        k.nombre.toLowerCase().includes(busquedaKitsTabla.toLowerCase()) || 
+        k.codigo.toLowerCase().includes(busquedaKitsTabla.toLowerCase())
     );
 
     // Funciones de Gestión de Catálogos (Editar/Eliminar Deptos, Cats, Provs)
@@ -503,34 +543,19 @@ export default function GestionProductos() {
         }
     };
 
-    // Exportación a CSV compatible con Excel
     const handleExportarCSV = () => {
         if (productos.length === 0) return alert('No hay productos en el catálogo para exportar.');
 
         const encabezados = [
-            'codigoBarras',
-            'nombre',
-            'precioVenta',
-            'costo',
-            'invActual',
-            'invMinimo',
-            'piezasPorPaquete',
-            'precioVentaPaquete',
-            'locacion',
-            'claveUnidad'
+            'codigoBarras', 'nombre', 'precioVenta', 'costo', 'invActual', 'invMinimo',
+            'piezasPorPaquete', 'precioVentaPaquete', 'locacion', 'claveUnidad'
         ];
 
         const filas = productos.map((p) => [
             `"${p.codigoBarras || ''}"`,
             `"${(p.nombre || '').replace(/"/g, '""')}"`,
-            p.precioVenta || 0,
-            p.costo || 0,
-            p.invActual || 0,
-            p.invMinimo || 0,
-            p.piezasPorPaquete || 1,
-            p.precioVentaPaquete || 0,
-            `"${p.locacion || ''}"`,
-            `"${p.claveUnidad || 'PZA'}"`
+            p.precioVenta || 0, p.costo || 0, p.invActual || 0, p.invMinimo || 0,
+            p.piezasPorPaquete || 1, p.precioVentaPaquete || 0, `"${p.locacion || ''}"`, `"${p.claveUnidad || 'PZA'}"`
         ]);
 
         const contenidoCSV = [encabezados.join(','), ...filas.map((f) => f.join(','))].join('\r\n');
@@ -544,7 +569,6 @@ export default function GestionProductos() {
         document.body.removeChild(link);
     };
 
-    // Importación de archivo CSV a la base de datos
     const handleImportarCSV = (e) => {
         const file = e.target.files[0];
         if (!file) return;
@@ -612,7 +636,6 @@ export default function GestionProductos() {
                 if (fileInputRef.current) fileInputRef.current.value = null;
             }
         };
-
         reader.readAsText(file, 'UTF-8');
     };
 
@@ -686,7 +709,17 @@ export default function GestionProductos() {
 
     const handleInputChange = (e) => {
         const { name, value } = e.target;
-        setDatosForm((prev) => ({ ...prev, [name]: value }));
+        
+        let valorFormateado = value;
+
+        if (name === 'codigoBarras') {
+            valorFormateado = value.toUpperCase();
+        } 
+        else if (['nombre', 'locacion', 'atributoColor', 'notaPaquete'].includes(name)) {
+            valorFormateado = formatoTitulo(value);
+        }
+
+        setDatosForm((prev) => ({ ...prev, [name]: valorFormateado }));
     };
 
     const handleImagenChange = (e, campo) => {
@@ -694,7 +727,33 @@ export default function GestionProductos() {
         if (file) {
             const reader = new FileReader();
             reader.onloadend = () => {
-                setDatosForm((prev) => ({ ...prev, [campo]: reader.result }));
+                const img = new Image();
+                img.onload = () => {
+                    const MAX_WIDTH = 800; 
+                    const MAX_HEIGHT = 800;
+                    let width = img.width;
+                    let height = img.height;
+
+                    if (width > MAX_WIDTH || height > MAX_HEIGHT) {
+                        if (width > height) {
+                            height *= MAX_WIDTH / width;
+                            width = MAX_WIDTH;
+                        } else {
+                            width *= MAX_HEIGHT / height;
+                            height = MAX_HEIGHT;
+                        }
+                    }
+
+                    const canvas = document.createElement('canvas');
+                    canvas.width = width;
+                    canvas.height = height;
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(img, 0, 0, width, height);
+                    
+                    const dataUrl = canvas.toDataURL(file.type, 0.85); 
+                    setDatosForm((prev) => ({ ...prev, [campo]: dataUrl }));
+                };
+                img.src = reader.result;
             };
             reader.readAsDataURL(file);
         }
@@ -776,9 +835,9 @@ export default function GestionProductos() {
         e.preventDefault();
         let url = '';
         let body = {};
-        if (modalTipo === 'departamento') { url = `${API_URL}/api/departamentos`; body = { nombre: nuevoNombre }; }
-        else if (modalTipo === 'categoria') { url = `${API_URL}/api/categorias`; body = { nombre: nuevoNombre }; }
-        else if (modalTipo === 'proveedor') { url = `${API_URL}/api/proveedores`; body = { nombre: nuevoNombre, telefono: nuevoTelefono, contacto: nuevoContacto }; }
+        if (modalTipo === 'departamento') { url = `${API_URL}/api/departamentos`; body = { nombre: formatoTitulo(nuevoNombre) }; }
+        else if (modalTipo === 'categoria') { url = `${API_URL}/api/categorias`; body = { nombre: formatoTitulo(nuevoNombre) }; }
+        else if (modalTipo === 'proveedor') { url = `${API_URL}/api/proveedores`; body = { nombre: formatoTitulo(nuevoNombre), telefono: nuevoTelefono, contacto: formatoTitulo(nuevoContacto) }; }
 
         try {
             const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
@@ -1038,7 +1097,7 @@ export default function GestionProductos() {
                 <div className="gp-catalogo-view">
                     <div className="gp-kits-builder">
                         <form className="box-kit-form" onSubmit={guardarKit}>
-                            <h3>+ Crear Paquete o Kit Escolar</h3>
+                            <h3>{kitEditandoId ? '✏️ Editar Paquete o Kit Escolar' : '+ Crear Paquete o Kit Escolar'}</h3>
                             <div className="form-group">
                                 <label style={{ display: 'flex', justifyContent: 'space-between' }}>
                                     Código del Kit (Generado Automáticamente):
@@ -1053,7 +1112,7 @@ export default function GestionProductos() {
                                 <input 
                                     type="text" 
                                     value={nuevoKitCodigo} 
-                                    onChange={(e) => setNuevoKitCodigo(e.target.value)} 
+                                    onChange={(e) => setNuevoKitCodigo(e.target.value.toUpperCase())} 
                                     required 
                                 />
                             </div>
@@ -1063,7 +1122,7 @@ export default function GestionProductos() {
                                     type="text" 
                                     placeholder="Ej. Paquete Escolar Primaria..." 
                                     value={nuevoKitNombre} 
-                                    onChange={(e) => setNuevoKitNombre(e.target.value)} 
+                                    onChange={(e) => setNuevoKitNombre(formatoTitulo(e.target.value))} 
                                     required 
                                 />
                             </div>
@@ -1079,9 +1138,16 @@ export default function GestionProductos() {
                                 />
                             </div>
 
-                            <button type="submit" className="btn-primary" style={{ marginTop: '10px' }}>
-                                💾 Guardar Kit
-                            </button>
+                            <div style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
+                                {kitEditandoId && (
+                                    <button type="button" className="btn-cancel" style={{ flex: 1 }} onClick={cancelarEdicionKit}>
+                                        Cancelar Edición
+                                    </button>
+                                )}
+                                <button type="submit" className="btn-primary" style={{ flex: 2 }}>
+                                    💾 {kitEditandoId ? 'Actualizar Kit' : 'Guardar Nuevo Kit'}
+                                </button>
+                            </div>
                         </form>
 
                         <div className="box-kit-componentes">
@@ -1171,7 +1237,16 @@ export default function GestionProductos() {
                         </div>
                     </div>
 
-                    <h3 style={{ marginTop: '20px' }}>Kits Registrados en el Sistema</h3>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '20px' }}>
+                        <h3 style={{ margin: 0 }}>Kits Registrados en el Sistema</h3>
+                        <input 
+                            type="text" 
+                            placeholder="🔍 Buscar kit por nombre o código..." 
+                            value={busquedaKitsTabla}
+                            onChange={(e) => setBusquedaKitsTabla(e.target.value)}
+                            style={{ padding: '8px 12px', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '13px', width: '250px' }}
+                        />
+                    </div>
                     <table className="gp-table">
                         <thead>
                             <tr>
@@ -1183,7 +1258,7 @@ export default function GestionProductos() {
                             </tr>
                         </thead>
                         <tbody>
-                            {kits.map((k) => (
+                            {kitsFiltrados.map((k) => (
                                 <tr key={k.id}>
                                     <td><code>{k.codigo}</code></td>
                                     <td><strong>{k.nombre}</strong></td>
@@ -1199,6 +1274,14 @@ export default function GestionProductos() {
                                     </td>
                                     <td style={{ textAlign: 'center' }}>
                                         <button 
+                                            className="btn-action edit" 
+                                            onClick={() => handleEditarKit(k)} 
+                                            title="Editar Kit"
+                                            style={{ marginRight: '6px' }}
+                                        >
+                                            ✏️
+                                        </button>
+                                        <button 
                                             className="btn-action delete" 
                                             onClick={() => eliminarKit(k.id, k.nombre)} 
                                             title="Eliminar Kit"
@@ -1208,8 +1291,8 @@ export default function GestionProductos() {
                                     </td>
                                 </tr>
                             ))}
-                            {kits.length === 0 && (
-                                <tr><td colSpan="5" className="gp-empty">No hay kits registrados todavía.</td></tr>
+                            {kitsFiltrados.length === 0 && (
+                                <tr><td colSpan="5" className="gp-empty">No se encontraron kits con esa búsqueda.</td></tr>
                             )}
                         </tbody>
                     </table>
@@ -1223,7 +1306,7 @@ export default function GestionProductos() {
                     <form onSubmit={guardarPromocion} style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '25px' }}>
                         <div className="form-group">
                             <label>Nombre de la Promoción:</label>
-                            <input type="text" value={nuevaPromoNombre} onChange={(e) => setNuevaPromoNombre(e.target.value)} placeholder="Ej. 10% Descuento Especial" required />
+                            <input type="text" value={nuevaPromoNombre} onChange={(e) => setNuevaPromoNombre(formatoTitulo(e.target.value))} placeholder="Ej. 10% Descuento Especial" required />
                         </div>
                         <div className="form-group">
                             <label>Tipo de Promoción:</label>
@@ -1441,7 +1524,7 @@ export default function GestionProductos() {
                                         type="text" 
                                         placeholder="Ej. Tony, Scribe, Lumen..." 
                                         value={datosNuevaCompra.proveedor} 
-                                        onChange={(e) => setDatosNuevaCompra({ ...datosNuevaCompra, proveedor: e.target.value })} 
+                                        onChange={(e) => setDatosNuevaCompra({ ...datosNuevaCompra, proveedor: formatoTitulo(e.target.value) })} 
                                         required 
                                     />
                                 </div>
@@ -1510,7 +1593,7 @@ export default function GestionProductos() {
                                         type="text" 
                                         placeholder="Ej. Subió $4 en Tony..." 
                                         value={datosNuevaCompra.nota} 
-                                        onChange={(e) => setDatosNuevaCompra({ ...datosNuevaCompra, nota: e.target.value })} 
+                                        onChange={(e) => setDatosNuevaCompra({ ...datosNuevaCompra, nota: formatoTitulo(e.target.value) })} 
                                     />
                                 </div>
                                 <div style={{ display: 'flex', alignItems: 'flex-end' }}>
@@ -1853,7 +1936,7 @@ export default function GestionProductos() {
                         <form onSubmit={guardarEdicionCat}>
                             <div className="form-group">
                                 <label>Nombre:</label>
-                                <input type="text" value={editNombre} onChange={(e) => setEditNombre(e.target.value)} required autoFocus />
+                                <input type="text" value={editNombre} onChange={(e) => setEditNombre(formatoTitulo(e.target.value))} required autoFocus />
                             </div>
                             {modalEditCatalog.tipo === 'proveedor' && (
                                 <>
@@ -1863,7 +1946,7 @@ export default function GestionProductos() {
                                     </div>
                                     <div className="form-group" style={{ marginTop: '10px' }}>
                                         <label>Contacto:</label>
-                                        <input type="text" value={editContacto} onChange={(e) => setEditContacto(e.target.value)} />
+                                        <input type="text" value={editContacto} onChange={(e) => setEditContacto(formatoTitulo(e.target.value))} />
                                     </div>
                                 </>
                             )}
@@ -1881,11 +1964,11 @@ export default function GestionProductos() {
                     <div className="gp-modal">
                         <h3>Agregar Nuevo {modalTipo === 'departamento' ? 'Departamento' : modalTipo === 'categoria' ? 'Categoría' : 'Proveedor'}</h3>
                         <form onSubmit={handleGuardarNuevoElemento}>
-                            <div className="form-group"><label>Nombre:</label><input type="text" value={nuevoNombre} onChange={(e) => setNuevoNombre(e.target.value)} required autoFocus/></div>
+                            <div className="form-group"><label>Nombre:</label><input type="text" value={nuevoNombre} onChange={(e) => setNuevoNombre(formatoTitulo(e.target.value))} required autoFocus/></div>
                             {modalTipo === 'proveedor' && (
                                 <>
                                     <div className="form-group" style={{ marginTop: '10px' }}><label>Teléfono:</label><input type="text" value={nuevoTelefono} onChange={(e) => setNuevoTelefono(e.target.value)} /></div>
-                                    <div className="form-group" style={{ marginTop: '10px' }}><label>Contacto:</label><input type="text" value={nuevoContacto} onChange={(e) => setNuevoContacto(e.target.value)} /></div>
+                                    <div className="form-group" style={{ marginTop: '10px' }}><label>Contacto:</label><input type="text" value={nuevoContacto} onChange={(e) => setNuevoContacto(formatoTitulo(e.target.value))} /></div>
                                 </>
                             )}
                             <div className="gp-modal-actions">

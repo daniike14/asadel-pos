@@ -122,6 +122,8 @@ db.serialize(() => {
       metodo_pago TEXT NOT NULL,
       monto_efectivo REAL DEFAULT 0,
       monto_tarjeta REAL DEFAULT 0,
+      monto_vales REAL DEFAULT 0,
+      monto_codi REAL DEFAULT 0,
       cajero TEXT NOT NULL,
       cliente_id INTEGER,
       puntos_ganados INTEGER DEFAULT 0,
@@ -134,6 +136,8 @@ db.serialize(() => {
   db.run(`ALTER TABLE ventas ADD COLUMN puntos_ganados INTEGER DEFAULT 0`, () => {});
   db.run(`ALTER TABLE ventas ADD COLUMN puntos_canjeados INTEGER DEFAULT 0`, () => {});
   db.run(`ALTER TABLE ventas ADD COLUMN estado TEXT DEFAULT 'completada'`, () => {});
+  db.run(`ALTER TABLE ventas ADD COLUMN monto_vales REAL DEFAULT 0`, () => {});
+  db.run(`ALTER TABLE ventas ADD COLUMN monto_codi REAL DEFAULT 0`, () => {});
 
   db.run(`
     CREATE TABLE IF NOT EXISTS detalle_ventas (
@@ -171,6 +175,8 @@ db.serialize(() => {
       cajero TEXT NOT NULL,
       total_ventas_efectivo REAL DEFAULT 0,
       total_ventas_tarjeta REAL DEFAULT 0,
+      total_ventas_vales REAL DEFAULT 0,
+      total_ventas_codi REAL DEFAULT 0,
       total_entradas REAL DEFAULT 0,
       total_salidas REAL DEFAULT 0,
       saldo_esperado REAL DEFAULT 0,
@@ -179,6 +185,9 @@ db.serialize(() => {
       observaciones TEXT
     )
   `);
+
+  db.run(`ALTER TABLE cortes_caja ADD COLUMN total_ventas_vales REAL DEFAULT 0`, () => {});
+  db.run(`ALTER TABLE cortes_caja ADD COLUMN total_ventas_codi REAL DEFAULT 0`, () => {});
 
   db.run(`
     CREATE TABLE IF NOT EXISTS kits (
@@ -309,9 +318,14 @@ db.serialize(() => {
       }
     });
   });
+
+  // Parches
+  db.run(`UPDATE ventas SET monto_efectivo = total WHERE metodo_pago = 'efectivo' AND monto_efectivo > total`, () => {});
+  db.run(`UPDATE cortes_caja SET fecha_hora = REPLACE(fecha_hora, ' ', 'T') || 'Z' WHERE fecha_hora NOT LIKE '%T%'`, () => {});
+  db.run(`UPDATE ventas SET fecha_hora = REPLACE(fecha_hora, ' ', 'T') || 'Z' WHERE fecha_hora NOT LIKE '%T%'`, () => {});
+  db.run(`UPDATE movimientos_caja SET fecha_hora = REPLACE(fecha_hora, ' ', 'T') || 'Z' WHERE fecha_hora NOT LIKE '%T%'`, () => {});
 });
 
-// Rutina de respaldo en disco
 const ejecutarRespaldoEnDisco = () => {
   try {
     if (!fs.existsSync(RUTA_DB_ACTUAL)) {
@@ -350,7 +364,6 @@ setInterval(() => {
   });
 }, 1000 * 60 * 60);
 
-// --- PRODUCTOS ---
 app.get('/api/productos', (req, res) => {
   const sql = `
     SELECT 
@@ -493,7 +506,6 @@ app.delete('/api/productos/:id', (req, res) => {
   });
 });
 
-// --- HISTORIAL DE COSTOS ---
 app.get('/api/productos/:id/historial-costos', (req, res) => {
   const { id } = req.params;
   db.all(`SELECT * FROM historial_costos WHERE producto_id = ? ORDER BY id DESC`, [id], (err, rows) => {
@@ -566,7 +578,6 @@ app.post('/api/productos/:id/registrar-compra', (req, res) => {
   );
 });
 
-// --- PROMOCIONES ---
 app.get('/api/promociones', (req, res) => {
   db.all('SELECT * FROM promociones ORDER BY id DESC', [], (err, rows) => {
     if (err) return res.status(500).json({ error: err.message });
@@ -590,13 +601,12 @@ app.delete('/api/promociones/:id', (req, res) => {
   });
 });
 
-// --- MOVIMIENTOS DE CAJA ---
 app.post('/api/movimientos-caja', (req, res) => {
   const { tipo, monto, motivo, cajero } = req.body;
   if (!tipo || !monto || !motivo) return res.status(400).json({ error: 'Faltan campos obligatorios.' });
 
-  const sql = `INSERT INTO movimientos_caja (tipo, monto, motivo, cajero) VALUES (?, ?, ?, ?)`;
-  db.run(sql, [tipo, parseFloat(monto) || 0, motivo.trim(), cajero || 'Turno 1'], function (err) {
+  const sql = `INSERT INTO movimientos_caja (tipo, monto, motivo, cajero, fecha_hora) VALUES (?, ?, ?, ?, ?)`;
+  db.run(sql, [tipo, parseFloat(monto) || 0, motivo.trim(), cajero || 'Turno 1', new Date().toISOString()], function (err) {
     if (err) return res.status(500).json({ error: err.message });
     res.json({ mensaje: 'Movimiento registrado correctamente', id: this.lastID });
   });
@@ -609,44 +619,68 @@ app.get('/api/movimientos-caja', (req, res) => {
   });
 });
 
-// --- CORTE DE CAJA ---
 app.get('/api/corte-caja/balance-actual', (req, res) => {
-  const sqlVentas = `
-    SELECT 
-      COALESCE(SUM(CASE WHEN metodo_pago IN ('efectivo', 'mixto') THEN monto_efectivo ELSE 0 END), 0) as ventasEfectivo,
-      COALESCE(SUM(CASE WHEN metodo_pago IN ('tarjeta', 'mixto') THEN monto_tarjeta ELSE 0 END), 0) as ventasTarjeta,
-      COALESCE(SUM(total), 0) as totalVentas,
-      COUNT(*) as ticketsTotal
-    FROM ventas
-    WHERE estado != 'cancelada'
-  `;
+  db.get('SELECT fecha_hora FROM cortes_caja ORDER BY id DESC LIMIT 1', [], (errUltimo, rowUltimo) => {
+    if (errUltimo) return res.status(500).json({ error: errUltimo.message });
 
-  const sqlMovs = `
-    SELECT 
-      COALESCE(SUM(CASE WHEN tipo = 'entrada' THEN monto ELSE 0 END), 0) as totalEntradas,
-      COALESCE(SUM(CASE WHEN tipo = 'salida' THEN monto ELSE 0 END), 0) as totalSalidas
-    FROM movimientos_caja
-  `;
+    let filtroFechaVentas = "estado != 'cancelada'";
+    let filtroFechaMovs = "1=1";
+    let parametros = [];
 
-  db.get(sqlVentas, [], (errV, rowV) => {
-    if (errV) return res.status(500).json({ error: errV.message });
-    db.get(sqlMovs, [], (errM, rowM) => {
-      if (errM) return res.status(500).json({ error: errM.message });
+    if (rowUltimo && rowUltimo.fecha_hora) {
+      filtroFechaVentas += " AND fecha_hora > ?";
+      filtroFechaMovs += " AND fecha_hora > ?";
+      parametros.push(rowUltimo.fecha_hora);
+    } else {
+      filtroFechaVentas += " AND date(fecha_hora, 'localtime') = date('now', 'localtime')";
+      filtroFechaMovs += " AND date(fecha_hora, 'localtime') = date('now', 'localtime')";
+    }
 
-      const ventasEfectivo = rowV.ventasEfectivo || 0;
-      const ventasTarjeta = rowV.ventasTarjeta || 0;
-      const totalEntradas = rowM.totalEntradas || 0;
-      const totalSalidas = rowM.totalSalidas || 0;
-      const saldoEsperado = ventasEfectivo + totalEntradas - totalSalidas;
+    const sqlVentas = `
+      SELECT 
+        COALESCE(SUM(CASE WHEN metodo_pago IN ('efectivo', 'mixto') THEN monto_efectivo ELSE 0 END), 0) as ventasEfectivo,
+        COALESCE(SUM(CASE WHEN metodo_pago IN ('tarjeta', 'mixto') THEN monto_tarjeta ELSE 0 END), 0) as ventasTarjeta,
+        COALESCE(SUM(CASE WHEN metodo_pago IN ('vales', 'mixto') THEN monto_vales ELSE 0 END), 0) as ventasVales,
+        COALESCE(SUM(CASE WHEN metodo_pago IN ('codi', 'mixto') THEN monto_codi ELSE 0 END), 0) as ventasCodi,
+        COALESCE(SUM(total), 0) as totalVentas,
+        COUNT(*) as ticketsTotal
+      FROM ventas
+      WHERE ${filtroFechaVentas}
+    `;
 
-      res.json({
-        ventasEfectivo,
-        ventasTarjeta,
-        totalVentas: rowV.totalVentas || 0,
-        ticketsTotal: rowV.ticketsTotal || 0,
-        totalEntradas,
-        totalSalidas,
-        saldoEsperado
+    const sqlMovs = `
+      SELECT 
+        COALESCE(SUM(CASE WHEN tipo = 'entrada' THEN monto ELSE 0 END), 0) as totalEntradas,
+        COALESCE(SUM(CASE WHEN tipo = 'salida' THEN monto ELSE 0 END), 0) as totalSalidas
+      FROM movimientos_caja
+      WHERE ${filtroFechaMovs}
+    `;
+
+    db.get(sqlVentas, parametros, (errV, rowV) => {
+      if (errV) return res.status(500).json({ error: errV.message });
+      db.get(sqlMovs, parametros, (errM, rowM) => {
+        if (errM) return res.status(500).json({ error: errM.message });
+
+        const ventasEfectivo = rowV.ventasEfectivo || 0;
+        const ventasTarjeta = rowV.ventasTarjeta || 0;
+        const ventasVales = rowV.ventasVales || 0;
+        const ventasCodi = rowV.ventasCodi || 0;
+        const totalEntradas = rowM.totalEntradas || 0;
+        const totalSalidas = rowM.totalSalidas || 0;
+        
+        const saldoEsperado = ventasEfectivo + totalEntradas - totalSalidas;
+
+        res.json({
+          ventasEfectivo,
+          ventasTarjeta,
+          ventasVales,
+          ventasCodi,
+          totalVentas: rowV.totalVentas || 0,
+          ticketsTotal: rowV.ticketsTotal || 0,
+          totalEntradas,
+          totalSalidas,
+          saldoEsperado
+        });
       });
     });
   });
@@ -657,6 +691,8 @@ app.post('/api/corte-caja', (req, res) => {
     cajero,
     ventasEfectivo,
     ventasTarjeta,
+    ventasVales,
+    ventasCodi,
     totalEntradas,
     totalSalidas,
     saldoEsperado,
@@ -666,21 +702,25 @@ app.post('/api/corte-caja', (req, res) => {
   } = req.body;
 
   const folio = `CORTE-${Date.now().toString().slice(-6)}`;
+  const fechaHoraActual = new Date().toISOString(); 
   const sql = `
     INSERT INTO cortes_caja (
-      folio, cajero, total_ventas_efectivo, total_ventas_tarjeta,
+      folio, fecha_hora, cajero, total_ventas_efectivo, total_ventas_tarjeta, total_ventas_vales, total_ventas_codi,
       total_entradas, total_salidas, saldo_esperado, saldo_declarado,
       diferencia, observaciones
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `;
 
   db.run(
     sql,
     [
       folio,
+      fechaHoraActual,
       cajero || 'Turno 1',
       ventasEfectivo || 0,
       ventasTarjeta || 0,
+      ventasVales || 0,
+      ventasCodi || 0,
       totalEntradas || 0,
       totalSalidas || 0,
       saldoEsperado || 0,
@@ -695,7 +735,6 @@ app.post('/api/corte-caja', (req, res) => {
   );
 });
 
-// --- VENTAS ---
 app.post('/api/ventas', (req, res) => {
   const {
     folio,
@@ -703,6 +742,8 @@ app.post('/api/ventas', (req, res) => {
     metodo_pago,
     monto_efectivo,
     monto_tarjeta,
+    monto_vales,
+    monto_codi,
     cajero,
     items,
     cliente_id,
@@ -731,8 +772,8 @@ app.post('/api/ventas', (req, res) => {
     const fechaHoraFinal = fecha_hora || new Date().toISOString();
 
     db.run(
-      `INSERT INTO ventas (folio, fecha_hora, total, metodo_pago, monto_efectivo, monto_tarjeta, cajero, cliente_id, puntos_ganados, puntos_canjeados, estado) 
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'completada')`,
+      `INSERT INTO ventas (folio, fecha_hora, total, metodo_pago, monto_efectivo, monto_tarjeta, monto_vales, monto_codi, cajero, cliente_id, puntos_ganados, puntos_canjeados, estado) 
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'completada')`,
       [
         folio,
         fechaHoraFinal,
@@ -740,6 +781,8 @@ app.post('/api/ventas', (req, res) => {
         metodo_pago,
         monto_efectivo || 0,
         monto_tarjeta || 0,
+        monto_vales || 0,
+        monto_codi || 0,
         cajero || 'Turno 1',
         cliente_id || null,
         puntos_ganados || 0,
@@ -872,7 +915,6 @@ app.post('/api/ventas/:id/cancelar', (req, res) => {
   });
 });
 
-// --- KITS ---
 app.post('/api/kits', (req, res) => {
   const { codigo, nombre, precio, items } = req.body;
 
@@ -887,6 +929,37 @@ app.post('/api/kits', (req, res) => {
     stmt.finalize();
 
     res.json({ mensaje: 'Kit creado exitosamente', id: kitId });
+  });
+});
+
+// NUEVA RUTA PARA EDITAR (ACTUALIZAR) KITS EXISTENTES
+app.put('/api/kits/:id', (req, res) => {
+  const { id } = req.params;
+  const { codigo, nombre, precio, items } = req.body;
+
+  db.serialize(() => {
+    db.run('BEGIN TRANSACTION');
+
+    db.run(
+      `UPDATE kits SET codigo = ?, nombre = ?, precio = ? WHERE id = ?`,
+      [codigo, nombre, precio, id]
+    );
+
+    db.run(`DELETE FROM kit_detalles WHERE kit_id = ?`, [id]);
+
+    const stmt = db.prepare(`INSERT INTO kit_detalles (kit_id, producto_id, cantidad) VALUES (?, ?, ?)`);
+    items.forEach((item) => {
+      stmt.run(id, item.producto_id, parseFloat(item.cantidad) || 1);
+    });
+    stmt.finalize();
+
+    db.run('COMMIT', (err) => {
+      if (err) {
+        db.run('ROLLBACK');
+        return res.status(500).json({ error: 'Error al actualizar el kit.' });
+      }
+      res.json({ mensaje: 'Kit actualizado exitosamente' });
+    });
   });
 });
 
@@ -922,7 +995,6 @@ app.delete('/api/kits/:id', (req, res) => {
   });
 });
 
-// --- DEPARTAMENTOS ---
 app.get('/api/departamentos', (req, res) => {
   db.all('SELECT * FROM departamentos ORDER BY nombre ASC', [], (err, rows) => {
     if (err) return res.status(500).json({ error: err.message });
@@ -963,7 +1035,6 @@ app.delete('/api/departamentos/:id', (req, res) => {
   });
 });
 
-// --- CATEGORÍAS ---
 app.get('/api/categorias', (req, res) => {
   db.all('SELECT * FROM categorias ORDER BY nombre ASC', [], (err, rows) => {
     if (err) return res.status(500).json({ error: err.message });
@@ -1004,7 +1075,6 @@ app.delete('/api/categorias/:id', (req, res) => {
   });
 });
 
-// --- PROVEEDORES ---
 app.get('/api/proveedores', (req, res) => {
   db.all('SELECT * FROM proveedores ORDER BY nombre ASC', [], (err, rows) => {
     if (err) return res.status(500).json({ error: err.message });
@@ -1045,7 +1115,6 @@ app.delete('/api/proveedores/:id', (req, res) => {
   });
 });
 
-// --- CLIENTES ---
 app.get('/api/clientes/buscar', (req, res) => {
   const q = req.query.q ? req.query.q.trim() : '';
   if (!q) return res.json([]);
@@ -1126,7 +1195,6 @@ app.get('/api/clientes/:id/historial', (req, res) => {
   });
 });
 
-// --- LEALTAD ---
 app.get('/api/configuracion/lealtad', (req, res) => {
   db.all('SELECT * FROM configuracion_lealtad', [], (err, rows) => {
     if (err) return res.status(500).json({ error: err.message });
@@ -1158,7 +1226,6 @@ app.post('/api/configuracion/lealtad', (req, res) => {
   });
 });
 
-// --- EMPRESA ---
 app.get('/api/empresa', (req, res) => {
   db.get('SELECT * FROM empresa_datos WHERE id = 1', [], (err, row) => {
     if (err) return res.status(500).json({ error: err.message });
@@ -1191,7 +1258,6 @@ app.post('/api/empresa', (req, res) => {
   });
 });
 
-// --- USUARIOS ---
 app.get('/api/usuarios', (req, res) => {
   db.all('SELECT id, usuario, nombre, rol, activo, fecha_creacion, password FROM usuarios ORDER BY id ASC', [], (err, rows) => {
     if (err) return res.status(500).json({ error: err.message });
@@ -1260,7 +1326,6 @@ app.post('/api/auth/login', (req, res) => {
   });
 });
 
-// --- DASHBOARD ---
 app.get('/api/dashboard/resumen', (req, res) => {
   const sqlVentas = `
     SELECT 
@@ -1269,6 +1334,7 @@ app.get('/api/dashboard/resumen', (req, res) => {
       COUNT(CASE WHEN estado != 'cancelada' THEN 1 END) as totalTickets,
       COUNT(CASE WHEN estado = 'cancelada' THEN 1 END) as totalDevoluciones
     FROM ventas
+    WHERE date(fecha_hora, 'localtime') = date('now', 'localtime')
   `;
 
   db.get(sqlVentas, [], (err, rowVentas) => {
@@ -1279,6 +1345,7 @@ app.get('/api/dashboard/resumen', (req, res) => {
         COALESCE(SUM(CASE WHEN tipo = 'entrada' THEN monto ELSE 0 END), 0) as totalEntradas,
         COALESCE(SUM(CASE WHEN tipo = 'salida' THEN monto ELSE 0 END), 0) as totalSalidas
       FROM movimientos_caja
+      WHERE date(fecha_hora, 'localtime') = date('now', 'localtime')
     `;
 
     db.get(sqlMovs, [], (errMov, rowMovs) => {
@@ -1290,20 +1357,31 @@ app.get('/api/dashboard/resumen', (req, res) => {
         (err2, rowsProd) => {
           if (err2) return res.status(500).json({ error: err2.message });
 
-          const ventasDia = rowVentas?.totalVentas || 0;
-          const efectivoVentas = rowVentas?.totalEfectivoVentas || 0;
-          const totalEntradas = rowMovs?.totalEntradas || 0;
-          const totalSalidas = rowMovs?.totalSalidas || 0;
-          const dineroCaja = efectivoVentas + totalEntradas - totalSalidas;
+          db.all(`
+            SELECT d.nombre, COUNT(p.id) as totalProductos 
+            FROM departamentos d 
+            LEFT JOIN productos p ON d.id = p.departamento_id 
+            GROUP BY d.id 
+            ORDER BY totalProductos DESC
+          `, [], (errDept, rowsDept) => {
+            if (errDept) return res.status(500).json({ error: errDept.message });
 
-          res.json({
-            ventasDia,
-            ticketsDia: rowVentas?.totalTickets || 0,
-            devoluciones: rowVentas?.totalDevoluciones || 0,
-            totalEntradas,
-            totalSalidas,
-            dineroCaja,
-            inventarioBajo: rowsProd
+            const ventasDia = rowVentas?.totalVentas || 0;
+            const efectivoVentas = rowVentas?.totalEfectivoVentas || 0;
+            const totalEntradas = rowMovs?.totalEntradas || 0;
+            const totalSalidas = rowMovs?.totalSalidas || 0;
+            const dineroCaja = efectivoVentas + totalEntradas - totalSalidas;
+
+            res.json({
+              ventasDia,
+              ticketsDia: rowVentas?.totalTickets || 0,
+              devoluciones: rowVentas?.totalDevoluciones || 0,
+              totalEntradas,
+              totalSalidas,
+              dineroCaja,
+              inventarioBajo: rowsProd,
+              departamentosResumen: rowsDept || []
+            });
           });
         }
       );
@@ -1311,7 +1389,6 @@ app.get('/api/dashboard/resumen', (req, res) => {
   });
 });
 
-// --- REPORTES ---
 app.get('/api/reportes/ventas', (req, res) => {
   const sqlVentas = `
     SELECT v.*, c.nombre AS cliente_nombre, c.telefono AS cliente_telefono

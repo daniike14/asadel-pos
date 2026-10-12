@@ -346,3 +346,258 @@
     color: #0f172a;
   }
 }
+
+/* =========================================================
+   ADAPTACIÓN RESPONSIVA NATIVA (DISEÑO TIPO TARJETAS MÓVILES)
+   ========================================================= */
+@media (max-width: 768px) {
+  /* Contenedor Principal */
+  .reportes-container {
+    padding: 8px;
+    background-color: #f8fafc;
+    min-height: calc(100vh - 52px);
+    overflow-y: auto;
+  }
+
+  /* 1. Header (Apilado y sin fondo pesado) */
+  .reportes-header {
+    background: transparent;
+    border: none;
+    padding: 0;
+    margin-bottom: 12px;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+  }
+
+  .reportes-header h2 {
+    font-size: 18px !important;
+  }
+
+  /* Pestañas de Navegación: Apiladas una debajo de otra como botones grandes */
+  .reportes-tabs {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 8px !important;
+    background: transparent !important;
+    padding: 0 !important;
+  }
+
+  .tab-btn {
+    width: 100% !important;
+    padding: 12px !important;
+    font-size: 14px !important;
+    background: #ffffff !important;
+    border: 1px solid #cbd5e1 !important;
+    border-radius: 8px !important;
+    text-align: center !important;
+    justify-content: center !important;
+  }
+
+  .tab-btn.active {
+    background-color: #0f172a !important;
+    color: #ffffff !important;
+    border-color: #0f172a !important;
+  }
+
+  /* 2. Filtros Apilados Limpiamente */
+  .reportes-filter-card {
+    padding: 12px 10px;
+    gap: 12px;
+    background: #ffffff;
+    border-radius: 8px;
+    border: 1px solid #e2e8f0;
+  }
+
+  .filter-row {
+    flex-direction: column;
+    align-items: stretch !important;
+    gap: 10px !important;
+  }
+
+  .filter-group-inputs {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+    width: 100%;
+  }
+
+  .filter-field {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+    width: 100%;
+  }
+
+  .filter-field input,
+  .filter-field select,
+  .reportes-search {
+    width: 100% !important;
+    height: 44px !important;
+    font-size: 14px !important;
+    padding: 10px 14px !important;
+    border-radius: 8px !important;
+    border: 1px solid #cbd5e1 !important;
+    box-sizing: border-box !important;
+  }
+
+  .filter-presets {
+    display: grid;
+    grid-template-columns: 1fr 1fr; /* Botones de fechas en cuadrícula de 2x2 */
+    gap: 8px;
+    width: 100%;
+  }
+
+  .btn-preset {
+    padding: 10px;
+    font-size: 13px;
+    text-align: center;
+  }
+
+  /* Los botones de "Anotar Encargo" e "Imprimir Lista" en celular */
+  .no-print button {
+    width: 100%;
+    margin-top: 4px;
+    justify-content: center;
+  }
+
+  /* 3. Tarjetas de Métricas en cuadrícula adaptable */
+  .reportes-metrics-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+  }
+
+  .metric-box {
+    padding: 12px 10px;
+    border-radius: 8px;
+    align-items: center;
+    text-align: center;
+  }
+
+  /* =========================================================
+     4. TRANSFORMACIÓN DE TODAS LAS TABLAS A TARJETAS
+     ========================================================= */
+  .reportes-table-wrapper {
+    width: 100% !important;
+    overflow: visible !important;
+    border: none !important;
+    background: transparent !important;
+  }
+
+  .reportes-table {
+    display: block !important;
+    width: 100% !important;
+  }
+
+  .reportes-table thead {
+    display: none !important; /* Desaparecen los encabezados de columnas de PC */
+  }
+
+  .reportes-table tbody {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 12px !important;
+    width: 100% !important;
+  }
+
+  .reportes-table tr {
+    display: flex !important;
+    flex-direction: column !important;
+    background: #ffffff !important;
+    padding: 16px 14px !important;
+    border: 1px solid #e2e8f0 !important;
+    border-radius: 10px !important;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.04) !important;
+    gap: 8px !important;
+    align-items: stretch !important;
+  }
+
+  .reportes-table td {
+    display: flex !important;
+    flex-direction: row !important;
+    justify-content: space-between !important;
+    align-items: center !important;
+    width: 100% !important;
+    padding: 0 !important;
+    border: none !important;
+    font-size: 14px !important;
+    box-sizing: border-box !important;
+    text-align: right !important;
+  }
+
+  /* Alineamos el texto a la izquierda en caso de que haya divs internos */
+  .reportes-table td > div {
+    text-align: right;
+  }
+
+  .reportes-table td > strong:first-child {
+    text-align: left;
+  }
+
+  /* Destacamos el primer elemento (El Folio, ID o Nombre) */
+  .reportes-table td:nth-child(1),
+  .reportes-table td:nth-child(2) {
+    font-size: 16px !important;
+    font-weight: 800 !important;
+    color: #0f172a !important;
+    border-bottom: 1px solid #f1f5f9 !important;
+    padding-bottom: 6px !important;
+    margin-bottom: 4px !important;
+  }
+
+  /* El último elemento (Botón de Acción o Editar) lo separamos y mandamos a la derecha */
+  .reportes-table td:last-child {
+    margin-top: 8px !important;
+    padding-top: 12px !important;
+    border-top: 1px dashed #cbd5e1 !important;
+    justify-content: flex-end !important;
+  }
+
+  .btn-accion-tabla {
+    padding: 10px 14px !important;
+    font-size: 13px !important;
+    border-radius: 6px !important;
+    width: 100%; /* Botón ancho para que sea fácil de presionar */
+  }
+
+  /* --- Ajustes Específicos para Resurtido en Móvil --- */
+  .resurtido-print-container {
+    padding: 0 !important;
+    background: transparent !important;
+  }
+  
+  .nota-carta-header {
+    background: white;
+    padding: 12px;
+    border-radius: 8px;
+    border: 1px solid #e2e8f0;
+    margin-bottom: 12px;
+  }
+
+  .input-cant-resurtido {
+    width: 80px !important;
+    height: 38px !important;
+    font-size: 16px !important;
+  }
+
+  /* Modales en Móvil */
+  .modal-overlay {
+    padding: 10px;
+    align-items: flex-start;
+    overflow-y: auto;
+  }
+
+  .modal-content {
+    width: 100% !important;
+    max-width: 100% !important;
+    margin-top: 10px;
+  }
+
+  .modal-corte-content, .modal-cotizacion-content {
+    padding: 0;
+  }
+
+  .corte-resumen-grid {
+    grid-template-columns: 1fr 1fr; /* El resumen del arqueo a 2 columnas */
+  }
+}

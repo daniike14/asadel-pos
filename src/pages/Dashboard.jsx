@@ -13,6 +13,7 @@ export default function Dashboard({ cambiarModulo }) {
     dineroCaja: 0
   });
   const [inventarioBajo, setInventarioBajo] = useState([]);
+  const [departamentosData, setDepartamentosData] = useState([]);
 
   const cargarResumenDashboard = async () => {
     try {
@@ -28,6 +29,7 @@ export default function Dashboard({ cambiarModulo }) {
           dineroCaja: data.dineroCaja || 0
         });
         setInventarioBajo(data.inventarioBajo || []);
+        setDepartamentosData(data.departamentosResumen || []);
       }
     } catch (err) {
       console.error('Error al cargar datos del dashboard:', err);
@@ -44,7 +46,6 @@ export default function Dashboard({ cambiarModulo }) {
 
   return (
     <div className="dash-container">
-      {/* Encabezado */}
       <header className="dash-header">
         <div className="dash-branding">
           <img src={logoAsadel} alt="Logo ASADEL" style={{ height: '32px' }} />
@@ -55,7 +56,6 @@ export default function Dashboard({ cambiarModulo }) {
         </div>
       </header>
 
-      {/* Resumen del Día */}
       <div className="dash-section">
         <div className="dash-section-title">
           RESUMEN DEL DÍA: {fechaHoy.charAt(0).toUpperCase() + fechaHoy.slice(1)}
@@ -90,7 +90,6 @@ export default function Dashboard({ cambiarModulo }) {
         </div>
       </div>
 
-      {/* Accesos Rápidos y Alertas */}
       <div className="dash-bottom-grid">
         <div className="dash-box">
           <div className="dash-section-title" style={{ borderBottom: 'none', margin: 0, padding: 0 }}>
@@ -116,7 +115,7 @@ export default function Dashboard({ cambiarModulo }) {
           <div className="dash-section-title" style={{ borderBottom: 'none', margin: 0, padding: 0, color: '#dc2626' }}>
             ⚠️ ALERTAS IMPORTANTES (Inventario Bajo)
           </div>
-          <div className="dash-alert-list">
+          <div className="dash-alert-list" style={{ maxHeight: '250px', overflowY: 'auto' }}>
             {inventarioBajo.length > 0 ? (
               inventarioBajo.map((prod) => (
                 <div key={prod.id} className="dash-alert-item">
@@ -131,6 +130,28 @@ export default function Dashboard({ cambiarModulo }) {
             )}
           </div>
         </div>
+
+        {/* NUEVA SECCIÓN DE DEPARTAMENTOS */}
+        <div className="dash-box">
+          <div className="dash-section-title" style={{ borderBottom: 'none', margin: 0, padding: 0, color: '#0f172a' }}>
+            📂 RESUMEN DE DEPARTAMENTOS
+          </div>
+          <div className="dash-dept-list">
+            {departamentosData.length > 0 ? (
+              departamentosData.map((d, i) => (
+                <div key={i} className="dash-dept-item">
+                  <span>{d.nombre}</span>
+                  <span className="dash-dept-badge">{d.totalProductos} productos</span>
+                </div>
+              ))
+            ) : (
+              <div style={{ color: '#64748b', fontStyle: 'italic', fontSize: '13px', padding: '10px 0' }}>
+                No hay departamentos registrados aún.
+              </div>
+            )}
+          </div>
+        </div>
+
       </div>
     </div>
   );

@@ -3,13 +3,13 @@ const path = require('path');
 const XLSX = require('xlsx');
 
 // 1. Ubicar el archivo de Excel
-let inputPath = path.resolve(__dirname, '..', 'Productos_2026-9-22.xlsx');
+let inputPath = path.resolve(__dirname, '..', 'Productos_2026-10-6.xlsx');
 if (!fs.existsSync(inputPath)) {
-  inputPath = path.resolve(__dirname, 'Productos_2026-9-22.xlsx');
+  inputPath = path.resolve(__dirname, 'Productos_2026-10-6.xlsx');
 }
 
 if (!fs.existsSync(inputPath)) {
-  console.error('❌ No se encontró el archivo Productos_2026-9-22.xlsx.');
+  console.error('❌ No se encontró el archivo Productos_2026-10-6.xlsx.');
   process.exit(1);
 }
 

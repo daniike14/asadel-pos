@@ -33,10 +33,13 @@ export default function PuntoDeVenta() {
   const [mostrarModalEditarItem, setMostrarModalEditarItem] = useState(false);
   const [ventaFinalizada, setVentaFinalizada] = useState(null);
 
-  // Estados de Cobro (Esc)
+  // Estados de Cobro y Métodos de Pago
   const [mostrarModalCobro, setMostrarModalCobro] = useState(false);
+  const [metodoPago, setMetodoPago] = useState('efectivo'); // efectivo, tarjeta, vales, codi, mixto
   const [montoEfectivo, setMontoEfectivo] = useState('');
   const [montoTarjeta, setMontoTarjeta] = useState('');
+  const [montoVales, setMontoVales] = useState('');
+  const [montoCodi, setMontoCodi] = useState('');
   const inputMontoEfectivoRef = useRef(null);
 
   // Estados de Fidelización / Clientes
@@ -61,7 +64,8 @@ export default function PuntoDeVenta() {
     telefono: '',
     mensaje_ticket: '¡Gracias por su compra y preferencia!',
     logo: '',
-    imprimir_ticket_auto: true
+    imprimir_ticket_auto: true,
+    max_resultados_busqueda: 8
   });
 
   // Alta rápida de cliente
@@ -96,9 +100,9 @@ export default function PuntoDeVenta() {
     localStorage.setItem('asadel_carrito_temporal', JSON.stringify(carrito));
   }, [carrito]);
 
-  // Auto-foco y selección rápida del monto en efectivo al abrir el modal de cobro
+  // Auto-foco cuando el modal de cobro se abre
   useEffect(() => {
-    if (mostrarModalCobro) {
+    if (mostrarModalCobro && (metodoPago === 'efectivo' || metodoPago === 'mixto')) {
       const timer = setTimeout(() => {
         if (inputMontoEfectivoRef.current) {
           inputMontoEfectivoRef.current.focus();
@@ -107,7 +111,7 @@ export default function PuntoDeVenta() {
       }, 60);
       return () => clearTimeout(timer);
     }
-  }, [mostrarModalCobro]);
+  }, [mostrarModalCobro, metodoPago]);
 
   const cargarDatosBD = async () => {
     try {
@@ -129,7 +133,6 @@ export default function PuntoDeVenta() {
           const precioPaq = parseFloat(p.precioVentaPaquete) > 0 ? parseFloat(p.precioVentaPaquete) : +(precioPza * piezasPorPaq).toFixed(2);
           const stockPiezas = parseFloat(p.invActual) || 0;
 
-          // 1. Entrada como Pieza Individual
           itemsCombinados.push({
             ...p,
             id_busqueda: `PZA_${p.id}`,
@@ -148,7 +151,6 @@ export default function PuntoDeVenta() {
             esVentaPaquete: false
           });
 
-          // 2. Opción de Paquete si tiene más de 1 pieza
           if (piezasPorPaq > 1 && !p.esServicio && !p.noInventariado) {
             const stockPaquetes = Math.floor(stockPiezas / piezasPorPaq);
             itemsCombinados.push({
@@ -217,13 +219,15 @@ export default function PuntoDeVenta() {
         setReglasLealtad(dataReglas);
       }
 
-if (resEmpresa.ok) {
+      if (resEmpresa.ok) {
         const dataEmp = await resEmpresa.json();
+        const localMax = localStorage.getItem('asadel_max_search');
         if (dataEmp && dataEmp.nombre) {
           const autoImprimir = !(dataEmp.imprimir_ticket_auto === false || dataEmp.imprimir_ticket_auto === 0 || dataEmp.imprimir_ticket_auto === '0');
           setDatosEmpresa({
             ...dataEmp,
-            imprimir_ticket_auto: autoImprimir
+            imprimir_ticket_auto: autoImprimir,
+            max_resultados_busqueda: localMax ? Number(localMax) : (dataEmp.max_resultados_busqueda !== undefined ? Number(dataEmp.max_resultados_busqueda) : 8)
           });
         }
       }
@@ -260,6 +264,8 @@ if (resEmpresa.ok) {
   const [datosCorte, setDatosCorte] = useState({
     ventasEfectivo: 0,
     ventasTarjeta: 0,
+    ventasVales: 0,
+    ventasCodi: 0,
     totalVentas: 0,
     ticketsTotal: 0,
     totalEntradas: 0,
@@ -272,7 +278,6 @@ if (resEmpresa.ok) {
 
   const inputBusquedaRef = useRef(null);
 
-  // Búsqueda en vivo de clientes
   useEffect(() => {
     const q = busquedaCliente.trim();
     if (q.length >= 2 && !clienteActivo) {
@@ -289,14 +294,13 @@ if (resEmpresa.ok) {
     }
   }, [busquedaCliente, clienteActivo]);
 
-  // Filtrado de sugerencias de productos
   useEffect(() => {
     const termino = busqueda.trim().toLowerCase();
     if (termino.length >= 1) {
       const coincidencias = catalogo.filter((p) =>
         p.nombre.toLowerCase().includes(termino) ||
         p.codigo.toLowerCase().includes(termino)
-      ).slice(0, 8);
+      ).slice(0, 50); 
 
       setSugerencias(coincidencias);
       setMostrarSugerencias(coincidencias.length > 0);
@@ -318,7 +322,7 @@ if (resEmpresa.ok) {
     return () => document.removeEventListener('mousedown', clickAfuera);
   }, []);
 
-  // Totales de compra compatibles con decimales
+  // Totales matemáticos
   const subtotalCarrito = carrito.reduce((acc, item) => {
     const cant = parseFloat(item.cantidad) || 0;
     const sub = item.precioUnitario * cant;
@@ -331,7 +335,6 @@ if (resEmpresa.ok) {
     return acc + Math.floor((item.puntosLealtad || 0) * cant);
   }, 0);
 
-  // Cálculo dinámico de canje con reglas configuradas
   const valorPunto = reglasLealtad.valor_punto_pesos || 1.0;
   const puntosDisponibles = clienteActivo ? (clienteActivo.puntos_acumulados || 0) : 0;
   const cumpleMinimoCanje = puntosDisponibles >= (reglasLealtad.minimo_puntos_canje || 0);
@@ -351,11 +354,21 @@ if (resEmpresa.ok) {
 
   const efectivoNum = parseFloat(montoEfectivo) || 0;
   const tarjetaNum = parseFloat(montoTarjeta) || 0;
-  const totalRecibido = efectivoNum + tarjetaNum;
+  const valesNum = parseFloat(montoVales) || 0;
+  const codiNum = parseFloat(montoCodi) || 0;
+
+  let totalRecibido = 0;
+  if (metodoPago === 'efectivo') {
+    totalRecibido = efectivoNum;
+  } else if (metodoPago === 'tarjeta' || metodoPago === 'vales' || metodoPago === 'codi') {
+    totalRecibido = totalPagar; 
+  } else if (metodoPago === 'mixto') {
+    totalRecibido = efectivoNum + tarjetaNum + valesNum + codiNum;
+  }
+
   const cambio = totalRecibido >= totalPagar ? totalRecibido - totalPagar : 0;
   const restante = totalPagar > totalRecibido ? totalPagar - totalRecibido : 0;
 
-  // Manejo de Clientes en Cobro
   const seleccionarClienteCobro = (c) => {
     setClienteActivo(c);
     setBusquedaCliente(`${c.nombre} (${c.telefono})`);
@@ -369,7 +382,7 @@ if (resEmpresa.ok) {
     setBusquedaCliente('');
     setCanjearPuntos(false);
     setMostrarAltaRapida(false);
-    setMontoEfectivo(subtotalCarrito.toFixed(2));
+    if (metodoPago === 'efectivo') setMontoEfectivo(subtotalCarrito.toFixed(2));
   };
 
   const guardarClienteRapido = async (e) => {
@@ -497,6 +510,8 @@ if (resEmpresa.ok) {
       cajero: 'Turno 1',
       ventasEfectivo: datosCorte.ventasEfectivo,
       ventasTarjeta: datosCorte.ventasTarjeta,
+      ventasVales: datosCorte.ventasVales,
+      ventasCodi: datosCorte.ventasCodi,
       totalEntradas: datosCorte.totalEntradas,
       totalSalidas: datosCorte.totalSalidas,
       saldoEsperado: datosCorte.saldoEsperado,
@@ -550,7 +565,6 @@ if (resEmpresa.ok) {
         const pzaProd = catalogo.find(c => c.id === itemAfectado.id && !c.esVentaPaquete);
         const stockPiezasTotal = pzaProd ? parseFloat(pzaProd.stock) : (parseFloat(itemAfectado.stockPiezasBase) || parseFloat(itemAfectado.stock) || 0);
 
-        // Sumar piezas comprometidas por otros renglones del mismo producto
         const piezasOtrosRenglones = prev
           .filter((it) => (it.id_unico || it.id) !== idUnico && it.id === itemAfectado.id)
           .reduce((acc, it) => acc + (parseFloat(it.cantidad) || 0) * (it.esVentaPaquete ? (parseFloat(it.piezasPorPaquete) || 1) : 1), 0);
@@ -609,7 +623,6 @@ if (resEmpresa.ok) {
     );
   };
 
-  // Bloqueo estricto al agregar productos agotados o excedentes
   const agregarAlCarrito = (producto, mantenerModalAbierto = false) => {
     const esFisicoInventariado = !producto.esKit && !producto.esServicio && !producto.noInventariado;
 
@@ -623,7 +636,6 @@ if (resEmpresa.ok) {
     const comentarioFinal = (producto.comentario || '').trim();
     const cantAgregar = parseFloat(producto.cantidadAgregar || 1);
 
-    // Validar existencias físicas reales contra lo que ya está en el carrito
     if (esFisicoInventariado) {
       const pzaProd = catalogo.find(c => c.id === producto.id && !c.esVentaPaquete);
       const stockPiezasTotal = pzaProd ? parseFloat(pzaProd.stock) : (parseFloat(producto.stockPiezasBase) || parseFloat(producto.stock) || 0);
@@ -711,19 +723,45 @@ if (resEmpresa.ok) {
   const manejarKeyDownBusqueda = (e) => {
     if (!mostrarSugerencias || sugerencias.length === 0) return;
 
+    let nextIndex = indiceSeleccionado;
+
     if (e.key === 'ArrowDown') {
       e.preventDefault();
-      setIndiceSeleccionado((prev) => (prev < sugerencias.length - 1 ? prev + 1 : 0));
+      nextIndex = indiceSeleccionado < sugerencias.length - 1 ? indiceSeleccionado + 1 : 0;
+      setIndiceSeleccionado(nextIndex);
     } else if (e.key === 'ArrowUp') {
       e.preventDefault();
-      setIndiceSeleccionado((prev) => (prev > 0 ? prev - 1 : sugerencias.length - 1));
+      nextIndex = indiceSeleccionado > 0 ? indiceSeleccionado - 1 : sugerencias.length - 1;
+      setIndiceSeleccionado(nextIndex);
     } else if (e.key === 'Enter') {
       if (indiceSeleccionado >= 0 && sugerencias[indiceSeleccionado]) {
         e.preventDefault();
         seleccionarSugerencia(sugerencias[indiceSeleccionado]);
       }
+      return;
     } else if (e.key === 'Escape') {
       setMostrarSugerencias(false);
+      return;
+    }
+
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      setTimeout(() => {
+        const listEl = document.getElementById('lista-sugerencias-pos');
+        const itemEl = document.getElementById(`sug-pos-${nextIndex}`);
+        
+        if (listEl && itemEl) {
+          const itemHeight = itemEl.offsetHeight;
+          const itemTop = itemEl.offsetTop;
+          const listScrollTop = listEl.scrollTop;
+          const listHeight = listEl.clientHeight;
+
+          if (itemTop + itemHeight > listScrollTop + listHeight) {
+            listEl.scrollTop = (itemTop + itemHeight) - listHeight;
+          } else if (itemTop < listScrollTop) {
+            listEl.scrollTop = itemTop;
+          }
+        }
+      }, 5);
     }
   };
 
@@ -733,12 +771,15 @@ if (resEmpresa.ok) {
     const termino = busqueda.trim().toLowerCase();
     if (!termino) return;
 
-    // Si coincide el código exacto de barras
     const coincidenciasCodigo = catalogo.filter((prod) => prod.codigo.toLowerCase() === termino);
     if (coincidenciasCodigo.length === 1) {
       seleccionarSugerencia(coincidenciasCodigo[0]);
       return;
     }
+
+    const localMax = parseInt(localStorage.getItem('asadel_max_search'), 10);
+    const dbMax = parseInt(datosEmpresa.max_resultados_busqueda, 10);
+    const limit = localMax || dbMax || 8;
 
     const coincidencias = catalogo.filter((prod) =>
       prod.nombre.toLowerCase().includes(termino) ||
@@ -753,7 +794,7 @@ if (resEmpresa.ok) {
       comentario: '',
       cantidadAgregar: 1,
       imagenLocacion: p.imagenLocacion
-    }));
+    })).slice(0, limit);
 
     if (coincidencias.length > 0) {
       setResultadosBusqueda(coincidencias);
@@ -801,8 +842,7 @@ if (resEmpresa.ok) {
     const montoVal = parseFloat(movimientoMonto);
 
     if (isNaN(montoVal) || montoVal <= 0) {
-      alert('⚠️ Ingresa un monto válido mayor a 0.');
-      return;
+      return alert('⚠️ Ingresa un monto válido mayor a 0.');
     }
 
     try {
@@ -845,9 +885,12 @@ if (resEmpresa.ok) {
       folio: folioGenerado,
       fecha_hora: new Date().toISOString(),
       total: totalPagar,
-      metodo_pago: montoEfectivo && montoTarjeta ? 'mixto' : montoEfectivo ? 'efectivo' : 'tarjeta',
-      monto_efectivo: efectivoNum,
-      monto_tarjeta: tarjetaNum,
+      metodo_pago: metodoPago,
+      // AQUÍ ESTÁ EL TRUCO MATEMÁTICO: Si es efectivo, solo mandamos el Total de la cuenta (no el billete que nos dio el cliente).
+      monto_efectivo: metodoPago === 'efectivo' ? totalPagar : (metodoPago === 'mixto' ? efectivoNum : 0),
+      monto_tarjeta: metodoPago === 'tarjeta' ? totalPagar : (metodoPago === 'mixto' ? tarjetaNum : 0),
+      monto_vales: metodoPago === 'vales' ? totalPagar : (metodoPago === 'mixto' ? valesNum : 0),
+      monto_codi: metodoPago === 'codi' ? totalPagar : (metodoPago === 'mixto' ? codiNum : 0),
       cajero: 'Turno 1',
       items: carrito,
       cliente_id: clienteActivo ? clienteActivo.id : null,
@@ -869,8 +912,10 @@ if (resEmpresa.ok) {
           cajero: 'Turno 1',
           items: [...carrito],
           total: totalPagar,
-          efectivo: efectivoNum,
-          tarjeta: tarjetaNum,
+          efectivo: payloadVenta.monto_efectivo,
+          tarjeta: payloadVenta.monto_tarjeta,
+          vales: payloadVenta.monto_vales,
+          codi: payloadVenta.monto_codi,
           cambio: cambio,
           cliente: clienteActivo ? clienteActivo.nombre : null,
           puntosGanados: puntosGanadosCompra,
@@ -885,13 +930,14 @@ if (resEmpresa.ok) {
         setProductoSeleccionado(null);
         setMontoEfectivo('');
         setMontoTarjeta('');
+        setMontoVales('');
+        setMontoCodi('');
         setClienteActivo(null);
         setBusquedaCliente('');
         setCanjearPuntos(false);
         setMostrarModalCobro(false);
         cargarDatosBD();
 
-        // Evaluación estricta: sólo abre ticket si NO está apagado explícitamente
         const autoImprimir = !(datosEmpresa.imprimir_ticket_auto === false || datosEmpresa.imprimir_ticket_auto === 0 || datosEmpresa.imprimir_ticket_auto === '0');
 
         if (autoImprimir) {
@@ -910,6 +956,15 @@ if (resEmpresa.ok) {
     }
   };
 
+  const abrirModalCobro = () => {
+    setMontoEfectivo(totalPagar.toString());
+    setMontoTarjeta('');
+    setMontoVales('');
+    setMontoCodi('');
+    setMetodoPago('efectivo');
+    setMostrarModalCobro(true);
+  };
+
   const abrirModalEditarItem = (item) => {
     setProductoSeleccionado(item);
     setItemEditando({ 
@@ -920,13 +975,16 @@ if (resEmpresa.ok) {
     setMostrarModalEditarItem(true);
   };
 
-  // Atajos globales de teclado (Cobro con ESC, subir/bajar piezas con + y -)
+  // Atajos globales de teclado
   useEffect(() => {
     const manejarTeclas = (event) => {
       const activeTag = document.activeElement?.tagName;
-      const estaEscribiendoEnInput = activeTag === 'INPUT' || activeTag === 'TEXTAREA' || activeTag === 'SELECT';
+      const activeId = document.activeElement?.id;
+      const activeValue = document.activeElement?.value;
 
-      // 1. Cobrar con ESC
+      const esBuscadorVacio = activeId === 'search-input' && activeValue === '';
+      const estaEscribiendoEnInput = (activeTag === 'INPUT' || activeTag === 'TEXTAREA' || activeTag === 'SELECT') && !esBuscadorVacio;
+
       if (event.key === 'Escape') {
         const algunModalAbierto = mostrarModalCobro || mostrarModalBusqueda || modalActivo || mostrarModalEditarItem || imagenVisorFlotante;
         
@@ -939,23 +997,19 @@ if (resEmpresa.ok) {
           setImagenVisorFlotante(null);
         } else if (carrito.length > 0) {
           event.preventDefault();
-          setMontoEfectivo(totalPagar.toString());
-          setMostrarModalCobro(true);
+          abrirModalCobro();
         }
         return;
       }
 
-      // Compatibilidad con F12
       if (event.key === 'F12' && !mostrarModalCobro && !mostrarModalBusqueda && !modalActivo && !mostrarModalEditarItem) {
         event.preventDefault();
         if (carrito.length > 0) {
-          setMontoEfectivo(totalPagar.toString());
-          setMostrarModalCobro(true);
+          abrirModalCobro();
         }
         return;
       }
 
-      // Eliminar con Supr
       if (event.key === 'Delete' && !mostrarModalCobro && !mostrarModalBusqueda && !modalActivo && !mostrarModalEditarItem) {
         if (!estaEscribiendoEnInput) {
           event.preventDefault();
@@ -964,7 +1018,6 @@ if (resEmpresa.ok) {
         return;
       }
 
-      // 2. Subir o bajar piezas con teclas + y - en el renglón seleccionado
       const itemDestino = productoSeleccionado || (carrito.length > 0 ? carrito[carrito.length - 1] : null);
 
       if (!estaEscribiendoEnInput && itemDestino && !mostrarModalCobro && !mostrarModalBusqueda && !modalActivo && !mostrarModalEditarItem) {
@@ -987,7 +1040,6 @@ if (resEmpresa.ok) {
   const ubicacionTexto = productoFresco?.ubicacion || productoSeleccionado?.ubicacion || 'N/A';
   const fotoUbicacion = productoFresco?.imagenLocacion || productoSeleccionado?.imagenLocacion;
 
-  // Cálculo de stock restante en vivo para el visor
   const stockBase = productoFresco?.stock ?? productoSeleccionado?.stock ?? 0;
   const cantEnCarro = productoSeleccionado ? (carrito.find(it => (it.id_unico || it.id) === (productoSeleccionado.id_unico || productoSeleccionado.id))?.cantidad || 0) : 0;
   const stockRemanente = +(stockBase - cantEnCarro).toFixed(2);
@@ -999,12 +1051,15 @@ if (resEmpresa.ok) {
   const fechaNotaImpresion = ventaFinalizada ? ventaFinalizada.fechaHora : `${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
   const totalNotaImpresion = ventaFinalizada ? ventaFinalizada.total : totalPagar;
 
+  const limiteVisual = parseInt(localStorage.getItem('asadel_max_search'), 10) || parseInt(datosEmpresa.max_resultados_busqueda, 10) || 8;
+  const alturaDropdown = 36 + (limiteVisual * 58);
+
   return (
     <div className="pos-container">
       {/* ALERTA DISCRETA TIPO TOAST DE STOCK MÍNIMO */}
       {alertaStock && (
         <div className="pos-stock-toast">
-          <div className="toast-icon">⚠️️</div>
+          <div className="toast-icon">⚠</div>
           <div className="toast-content">
             <strong>Stock bajo en mostrador</strong>
             <span>
@@ -1044,7 +1099,11 @@ if (resEmpresa.ok) {
           />
 
           {mostrarSugerencias && sugerencias.length > 0 && (
-            <ul className="pos-autocomplete-list">
+            <ul 
+              className="pos-autocomplete-list" 
+              id="lista-sugerencias-pos"
+              style={{ maxHeight: `${alturaDropdown}px` }}
+            >
               <li className="pos-autocomplete-header">
                 <span>Producto / Presentación</span>
                 <span>Precio</span>
@@ -1053,6 +1112,7 @@ if (resEmpresa.ok) {
 
               {sugerencias.map((item, idx) => (
                 <li
+                  id={`sug-pos-${idx}`}
                   key={item.id_busqueda || item.id}
                   className={`pos-autocomplete-item ${idx === indiceSeleccionado ? 'active' : ''}`}
                   onMouseDown={(e) => {
@@ -1094,6 +1154,7 @@ if (resEmpresa.ok) {
                 <tr>
                   <th style={{ width: '110px' }}>CANT</th>
                   <th>PRODUCTO / PAQUETE</th>
+                  <th className="col-stock-pos" style={{ width: '70px', textAlign: 'center' }}>STOCK</th>
                   <th style={{ width: '90px' }}>PRECIO U.</th>
                   <th style={{ width: '80px' }}>DESC.</th>
                   <th style={{ width: '100px' }}>TOTAL</th>
@@ -1155,8 +1216,11 @@ if (resEmpresa.ok) {
                           {item.nombre}
                           {item.aGranel && <small style={{ color: '#16a34a', marginLeft: '6px' }}>⚖ [Granel]</small>}
                         </div>
-                        {item.promocionNombre && <span className="product-table-promo">🏷️️ {item.promocionNombre}</span>}
+                        {item.promocionNombre && <span className="product-table-promo">🏷 {item.promocionNombre}</span>}
                         {item.comentario && <span className="product-table-comment">📝 {item.comentario}</span>}
+                      </td>
+                      <td className="col-stock-pos" style={{ textAlign: 'center', fontWeight: 'bold', color: item.stock <= 0 ? '#dc2626' : '#475569' }} onDoubleClick={() => abrirModalEditarItem(item)} title="Doble clic para editar">
+                        {item.esServicio || item.noInventariado ? '—' : item.stock}
                       </td>
                       <td onDoubleClick={() => abrirModalEditarItem(item)} title="Doble clic para editar">${item.precioUnitario.toFixed(2)}</td>
                       <td onDoubleClick={() => abrirModalEditarItem(item)} title="Doble clic para editar">{item.descuento ? `${item.descuento}%` : '-'}</td>
@@ -1165,7 +1229,7 @@ if (resEmpresa.ok) {
                   );
                 })}
                 {carrito.length === 0 && (
-                  <tr><td colSpan="5" className="empty-cart-message">No hay productos agregados a la venta activa</td></tr>
+                  <tr><td colSpan="6" className="empty-cart-message">No hay productos agregados a la venta activa</td></tr>
                 )}
               </tbody>
             </table>
@@ -1228,10 +1292,7 @@ if (resEmpresa.ok) {
           <div className="pos-checkout-actions">
             <button 
               className="btn-main btn-pay" 
-              onClick={() => { 
-                setMontoEfectivo(totalPagar.toString()); 
-                setMostrarModalCobro(true); 
-              }} 
+              onClick={abrirModalCobro} 
               disabled={carrito.length === 0}
             > 
               COBRAR (Esc) 
@@ -1302,20 +1363,21 @@ if (resEmpresa.ok) {
         </div>
       )}
 
-      {/* MODAL DE COBRO (Esc) CON CANJE DINÁMICO */}
+      {/* MODAL DE COBRO (Esc) CON PESTAÑAS Y CANJE DINÁMICO */}
       {mostrarModalCobro && (
         <div className="modal-overlay">
-          <div className="modal-content" style={{ width: '480px' }}>
+          <div className="modal-content" style={{ width: '520px' }}>
             <div className="modal-header">
               <h2>COBRAR VENTA (Esc)</h2>
               <button className="btn-close-modal" onClick={() => setMostrarModalCobro(false)}>✕</button>
             </div>
             <form onSubmit={procesarVenta} className="modal-body">
+              
               <div className="modal-total-box">
                 <span>TOTAL A COBRAR</span>
                 <h1>${totalPagar.toFixed(2)} MXN</h1>
                 {descuentoPorPuntos > 0 && (
-                  <small style={{ color: '#86efac' }}>
+                  <small style={{ color: '#86efac', display: 'block', marginTop: '4px' }}>
                     (-${descuentoPorPuntos.toFixed(2)} por {puntosACanjear} puntos)
                   </small>
                 )}
@@ -1411,7 +1473,9 @@ if (resEmpresa.ok) {
                             onChange={(e) => {
                               setCanjearPuntos(e.target.checked);
                               const desc = e.target.checked ? Math.min(maxDineroConPuntos, maxDescuentoPermitido) : 0;
-                              setMontoEfectivo(Math.max(0, subtotalCarrito - desc).toFixed(2));
+                              if (metodoPago === 'efectivo') {
+                                setMontoEfectivo(Math.max(0, subtotalCarrito - desc).toFixed(2));
+                              }
                             }}
                           />
                           <label htmlFor="check-canjear" style={{ cursor: 'pointer', flex: 1 }}>
@@ -1432,33 +1496,61 @@ if (resEmpresa.ok) {
                 </div>
               </div>
 
+              {/* TABS DE MÉTODOS DE PAGO */}
+              <div className="payment-method-selector">
+                <button type="button" className={`pay-tab ${metodoPago === 'efectivo' ? 'active' : ''}`} onClick={() => { setMetodoPago('efectivo'); setMontoEfectivo(totalPagar.toString()); setTimeout(() => inputMontoEfectivoRef.current?.select(), 50); }}>💵 Efectivo</button>
+                <button type="button" className={`pay-tab ${metodoPago === 'tarjeta' ? 'active' : ''}`} onClick={() => setMetodoPago('tarjeta')}>💳 Tarjeta</button>
+                <button type="button" className={`pay-tab ${metodoPago === 'vales' ? 'active' : ''}`} onClick={() => setMetodoPago('vales')}>🏷️ Vales</button>
+                <button type="button" className={`pay-tab ${metodoPago === 'codi' ? 'active' : ''}`} onClick={() => setMetodoPago('codi')}>📱 CoDi</button>
+                <button type="button" className={`pay-tab ${metodoPago === 'mixto' ? 'active' : ''}`} onClick={() => { setMetodoPago('mixto'); setMontoEfectivo(''); }}>🔀 Mixto</button>
+              </div>
+
               {/* CAMPOS DE FORMA DE PAGO */}
               <div className="payment-fields">
-                <div className="field-group">
-                  <label>Monto en Efectivo ($):</label>
-                  <input 
-                    ref={inputMontoEfectivoRef}
-                    type="number" 
-                    step="0.01" 
-                    min="0" 
-                    value={montoEfectivo} 
-                    onChange={(e) => setMontoEfectivo(e.target.value)} 
-                    onFocus={(e) => e.target.select()}
-                    placeholder="0.00" 
-                  />
-                </div>
-                <div className="field-group">
-                  <label>Monto con Tarjeta ($):</label>
-                  <input 
-                    type="number" 
-                    step="0.01" 
-                    min="0" 
-                    value={montoTarjeta} 
-                    onChange={(e) => setMontoTarjeta(e.target.value)} 
-                    onFocus={(e) => e.target.select()}
-                    placeholder="0.00" 
-                  />
-                </div>
+                {metodoPago === 'efectivo' && (
+                  <div className="field-group">
+                    <label>Efectivo Recibido ($):</label>
+                    <input 
+                      ref={inputMontoEfectivoRef}
+                      type="number" 
+                      step="0.01" 
+                      min="0" 
+                      value={montoEfectivo} 
+                      onChange={(e) => setMontoEfectivo(e.target.value)} 
+                      onFocus={(e) => e.target.select()}
+                      placeholder="0.00" 
+                    />
+                  </div>
+                )}
+
+                {(metodoPago === 'tarjeta' || metodoPago === 'vales' || metodoPago === 'codi') && (
+                  <div className="exact-payment-notice">
+                    Se registrará un cobro exacto de <br/>
+                    <strong style={{fontSize: '24px', color: '#16a34a'}}>${totalPagar.toFixed(2)} MXN</strong> <br/>
+                    mediante <strong>{metodoPago.toUpperCase()}</strong>.
+                  </div>
+                )}
+
+                {metodoPago === 'mixto' && (
+                  <>
+                    <div className="field-group">
+                      <label>Pago en Efectivo ($):</label>
+                      <input type="number" step="0.01" min="0" value={montoEfectivo} onChange={(e) => setMontoEfectivo(e.target.value)} onFocus={(e) => e.target.select()} placeholder="0.00" />
+                    </div>
+                    <div className="field-group">
+                      <label>Pago con Tarjeta ($):</label>
+                      <input type="number" step="0.01" min="0" value={montoTarjeta} onChange={(e) => setMontoTarjeta(e.target.value)} onFocus={(e) => e.target.select()} placeholder="0.00" />
+                    </div>
+                    <div className="field-group">
+                      <label>Pago con Vales ($):</label>
+                      <input type="number" step="0.01" min="0" value={montoVales} onChange={(e) => setMontoVales(e.target.value)} onFocus={(e) => e.target.select()} placeholder="0.00" />
+                    </div>
+                    <div className="field-group">
+                      <label>Pago con CoDi ($):</label>
+                      <input type="number" step="0.01" min="0" value={montoCodi} onChange={(e) => setMontoCodi(e.target.value)} onFocus={(e) => e.target.select()} placeholder="0.00" />
+                    </div>
+                  </>
+                )}
               </div>
 
               <div className="payment-summary">
@@ -1466,17 +1558,17 @@ if (resEmpresa.ok) {
                 {restante > 0 ? (
                   <div className="summary-row pending-amount"><span>Falta por pagar:</span><strong>${restante.toFixed(2)}</strong></div>
                 ) : (
-                  <div className="summary-row change-amount"><span>Cambio:</span><strong>${cambio.toFixed(2)}</strong></div>
+                  <div className="summary-row change-amount"><span>Cambio a devolver:</span><strong>${cambio.toFixed(2)}</strong></div>
                 )}
               </div>
 
               <div className="modal-footer">
                 <button type="button" className="btn-cancel-modal" onClick={() => setMostrarModalCobro(false)}>Cancelar (Esc)</button>
                 <button type="submit" className="btn-confirm-modal" disabled={totalRecibido < totalPagar}>
-  {!(datosEmpresa.imprimir_ticket_auto === false || datosEmpresa.imprimir_ticket_auto === 0 || datosEmpresa.imprimir_ticket_auto === '0')
-    ? 'Confirmar Pago y Ticket' 
-    : 'Confirmar Pago (Sin Ticket)'}
-</button>
+                  {!(datosEmpresa.imprimir_ticket_auto === false || datosEmpresa.imprimir_ticket_auto === 0 || datosEmpresa.imprimir_ticket_auto === '0')
+                    ? 'Confirmar Pago y Ticket' 
+                    : 'Confirmar Pago (Sin Ticket)'}
+                </button>
               </div>
             </form>
           </div>
@@ -1572,14 +1664,26 @@ if (resEmpresa.ok) {
                       )}
                       {ventaFinalizada && ventaFinalizada.efectivo > 0 && (
                         <tr>
-                          <td>Efectivo Recibido:</td>
+                          <td>Efectivo:</td>
                           <td>${ventaFinalizada.efectivo.toFixed(2)}</td>
                         </tr>
                       )}
                       {ventaFinalizada && ventaFinalizada.tarjeta > 0 && (
                         <tr>
-                          <td>Pago con Tarjeta:</td>
+                          <td>Tarjeta:</td>
                           <td>${ventaFinalizada.tarjeta.toFixed(2)}</td>
+                        </tr>
+                      )}
+                      {ventaFinalizada && ventaFinalizada.vales > 0 && (
+                        <tr>
+                          <td>Vales:</td>
+                          <td>${ventaFinalizada.vales.toFixed(2)}</td>
+                        </tr>
+                      )}
+                      {ventaFinalizada && ventaFinalizada.codi > 0 && (
+                        <tr>
+                          <td>CoDi:</td>
+                          <td>${ventaFinalizada.codi.toFixed(2)}</td>
                         </tr>
                       )}
                       {ventaFinalizada && ventaFinalizada.cambio > 0 && (
@@ -1651,6 +1755,10 @@ if (resEmpresa.ok) {
                   <strong>${datosCorte.ventasTarjeta.toFixed(2)}</strong>
                 </div>
                 <div className="corte-stat">
+                  <span>Vales / CoDi:</span>
+                  <strong>${((datosCorte.ventasVales || 0) + (datosCorte.ventasCodi || 0)).toFixed(2)}</strong>
+                </div>
+                <div className="corte-stat">
                   <span>Total Ventas ({datosCorte.ticketsTotal} tckts):</span>
                   <strong style={{ color: '#16a34a' }}>${datosCorte.totalVentas.toFixed(2)}</strong>
                 </div>
@@ -1662,9 +1770,9 @@ if (resEmpresa.ok) {
                   <span>Salidas / Gastos:</span>
                   <strong style={{ color: '#dc2626' }}>-${datosCorte.totalSalidas.toFixed(2)}</strong>
                 </div>
-                <div className="corte-stat">
-                  <span>Efectivo Esperado en Caja:</span>
-                  <strong style={{ color: '#0f172a', fontSize: '18px' }}>${datosCorte.saldoEsperado.toFixed(2)}</strong>
+                <div className="corte-stat" style={{ gridColumn: 'span 3', borderTop: '2px dashed #cbd5e1', paddingTop: '10px', marginTop: '4px' }}>
+                  <span>Efectivo Físico Esperado en Cajón (Efectivo + Fondo - Gastos):</span>
+                  <strong style={{ color: '#0f172a', fontSize: '20px' }}>${datosCorte.saldoEsperado.toFixed(2)}</strong>
                 </div>
               </div>
 

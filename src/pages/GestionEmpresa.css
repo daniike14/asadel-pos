@@ -123,3 +123,213 @@
 
 .badge-rol.admin { background-color: #fef3c7; color: #b45309; }
 .badge-rol.cajero { background-color: #e0f2fe; color: #0284c7; }
+
+/* =========================================================
+   ADAPTACIÓN RESPONSIVA NATIVA (DISEÑO TIPO TARJETAS MÓVILES)
+   ========================================================= */
+@media (max-width: 768px) {
+  .emp-container {
+    padding: 8px;
+  }
+
+  /* 1. Cabecera y Pestañas */
+  .emp-header {
+    background: transparent;
+    border: none;
+    padding: 0;
+    margin-bottom: 12px;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+
+  /* Oculta logo y título redundante para ahorrar espacio */
+  .emp-header > div:first-child {
+    display: none !important; 
+  }
+
+  .emp-tabs {
+    flex-direction: column;
+    background: transparent;
+    padding: 0;
+    gap: 8px;
+  }
+
+  .emp-tab-btn {
+    width: 100%;
+    padding: 12px;
+    font-size: 14px;
+    background: #ffffff;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+  }
+
+  .emp-tab-btn.active {
+    background-color: #0f172a;
+    color: #ffffff;
+    border-color: #0f172a;
+  }
+
+  .emp-header .btn-secondary {
+    width: 100%;
+    padding: 12px;
+    text-align: center;
+    border-radius: 8px;
+  }
+
+  /* 2. Ajuste del Contenedor Principal */
+  .emp-card {
+    padding: 0;
+    border: none;
+    background: transparent;
+    box-shadow: none;
+    gap: 12px;
+  }
+
+  /* Ajuste para el encabezado de "Cuentas de Acceso" y el botón "+ Nuevo Usuario" */
+  .emp-card > div[style*="justify-content: space-between"] {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 12px !important;
+    background: #ffffff;
+    padding: 14px;
+    border-radius: 8px;
+    border: 1px solid #e2e8f0;
+  }
+
+  .emp-card > div[style*="justify-content: space-between"] button {
+    width: 100% !important;
+    height: 44px !important;
+    border-radius: 6px;
+    font-size: 14px;
+  }
+
+  /* 3. Formulario de Empresa */
+  .emp-grid-two {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+
+  .emp-logo-box {
+    height: 140px;
+    background: #ffffff;
+    border-radius: 8px;
+  }
+
+  .emp-form-fields {
+    grid-template-columns: 1fr;
+    background: #ffffff;
+    padding: 14px;
+    border-radius: 8px;
+    border: 1px solid #e2e8f0;
+    gap: 12px;
+  }
+
+  .emp-form-fields .full {
+    grid-column: span 1;
+  }
+
+  .input-group-inline input {
+    width: 100%;
+    box-sizing: border-box;
+    height: 44px;
+    font-size: 14px;
+    border-radius: 6px;
+  }
+
+  /* 4. Transformación de Tabla de Usuarios a Tarjetas */
+  .emp-table, .emp-table tbody {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    width: 100%;
+  }
+
+  .emp-table thead {
+    display: none; /* Desaparecen los encabezados de columnas de PC */
+  }
+
+  .emp-table tr {
+    display: flex;
+    flex-direction: column;
+    background: #ffffff;
+    padding: 16px 14px;
+    border-radius: 10px;
+    border: 1px solid #e2e8f0;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.04);
+    gap: 8px;
+  }
+
+  .emp-table td {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0;
+    border: none;
+    font-size: 14px;
+  }
+
+  /* Distribución de los datos dentro de la Tarjeta de Usuario */
+  .emp-table td:nth-child(1) { 
+    display: none !important; /* Ocultamos el ID para ahorrar espacio */
+  } 
+
+  /* Nombre de Usuario Principal (Destacado) */
+  .emp-table td:nth-child(2) {
+    font-size: 16px !important;
+    font-weight: 800;
+    color: #0f172a;
+    border-bottom: 1px solid #f1f5f9;
+    padding-bottom: 8px;
+    margin-bottom: 4px;
+    justify-content: flex-start;
+  }
+
+  /* Inyectamos etiquetas visuales sin tocar React */
+  .emp-table td:nth-child(3)::before { content: "Nombre:"; font-weight: 600; color: #64748b; font-size: 13px; }
+  .emp-table td:nth-child(4)::before { content: "Rol:"; font-weight: 600; color: #64748b; font-size: 13px; }
+  .emp-table td:nth-child(5)::before { content: "Estado:"; font-weight: 600; color: #64748b; font-size: 13px; }
+  .emp-table td:nth-child(6)::before { content: "Fecha Alta:"; font-weight: 600; color: #64748b; font-size: 13px; }
+
+  /* Botones de acción al final de la tarjeta */
+  .emp-table td:last-child {
+    margin-top: 10px;
+    padding-top: 12px;
+    border-top: 1px dashed #cbd5e1;
+    justify-content: flex-end;
+  }
+
+  .emp-table td:last-child > div {
+    width: 100%;
+    display: flex;
+    gap: 8px;
+  }
+
+  .emp-table td:last-child button {
+    flex: 1;
+    padding: 12px 10px;
+    font-size: 13px;
+    border-radius: 6px;
+  }
+
+  /* 5. Optimización de Modales para Celular */
+  .modal-overlay {
+    padding: 10px;
+    align-items: flex-start;
+    overflow-y: auto;
+  }
+
+  .modal-content {
+    width: 100% !important;
+    margin-top: 10px;
+  }
+  
+  .modal-body .field-group input,
+  .modal-body .field-group select {
+    height: 44px;
+    font-size: 14px;
+    width: 100%;
+    box-sizing: border-box;
+    border-radius: 6px;
+  }
+}

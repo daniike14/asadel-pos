@@ -14,7 +14,8 @@ export default function GestionEmpresa({ volverAlDashboard }) {
     telefono: '',
     mensaje_ticket: '',
     logo: '',
-    imprimir_ticket_auto: true
+    imprimir_ticket_auto: true,
+    max_resultados_busqueda: 8
   });
 
   // Lista de Usuarios
@@ -40,9 +41,13 @@ export default function GestionEmpresa({ volverAlDashboard }) {
 
       if (resEmpresa.ok) {
         const dataEmp = await resEmpresa.json();
+        // Leemos la memoria local como prioridad para la búsqueda
+        const localMax = localStorage.getItem('asadel_max_search');
+        
         setDatosEmpresa({
           ...dataEmp,
-          imprimir_ticket_auto: dataEmp.imprimir_ticket_auto !== undefined ? Boolean(dataEmp.imprimir_ticket_auto) : true
+          imprimir_ticket_auto: dataEmp.imprimir_ticket_auto !== undefined ? Boolean(dataEmp.imprimir_ticket_auto) : true,
+          max_resultados_busqueda: localMax ? Number(localMax) : (dataEmp.max_resultados_busqueda !== undefined ? Number(dataEmp.max_resultados_busqueda) : 8)
         });
       }
       if (resUsuarios.ok) setUsuarios(await resUsuarios.json());
@@ -68,6 +73,10 @@ export default function GestionEmpresa({ volverAlDashboard }) {
 
   const guardarDatosEmpresa = async (e) => {
     e.preventDefault();
+    
+    // Guardamos el límite de búsqueda localmente para evitar depender de si la BD tiene esa columna o no
+    localStorage.setItem('asadel_max_search', datosEmpresa.max_resultados_busqueda);
+
     try {
       const res = await fetch(`${API_URL}/api/empresa`, {
         method: 'POST',
@@ -232,6 +241,19 @@ export default function GestionEmpresa({ volverAlDashboard }) {
                   placeholder="Ej. 55 1234 5678"
                   value={datosEmpresa.telefono || ''}
                   onChange={(e) => setDatosEmpresa({ ...datosEmpresa, telefono: e.target.value })}
+                />
+              </div>
+
+              <div className="input-group-inline">
+                <label>Resultados máximos en búsqueda:</label>
+                <input
+                  type="number"
+                  min="1"
+                  max="50"
+                  placeholder="Ej. 8"
+                  value={datosEmpresa.max_resultados_busqueda || ''}
+                  onChange={(e) => setDatosEmpresa({ ...datosEmpresa, max_resultados_busqueda: parseInt(e.target.value, 10) || '' })}
+                  title="Cantidad de productos a mostrar al buscar en el Punto de Venta"
                 />
               </div>
 

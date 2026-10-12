@@ -161,3 +161,220 @@
   color: #1e40af;
   line-height: 1.4;
 }
+
+/* =========================================================
+   ADAPTACIÓN RESPONSIVA NATIVA (DISEÑO TIPO TARJETAS MÓVILES)
+   ========================================================= */
+@media (max-width: 768px) {
+  .gc-container {
+    padding: 8px;
+    background-color: #f8fafc;
+    overflow-y: auto;
+  }
+
+  /* 1. Cabecera (Se apilan los botones y se oculta el logo por espacio) */
+  .gc-header {
+    flex-direction: column;
+    align-items: stretch;
+    padding: 10px;
+    gap: 10px;
+    background: transparent;
+    border: none;
+    margin-bottom: 4px;
+  }
+
+  .gc-header > div:first-child {
+    display: none !important; /* Oculta logo y título en celular */
+  }
+
+  .gc-header > div:last-child {
+    flex-direction: column !important;
+    width: 100%;
+  }
+
+  .gc-header button {
+    width: 100%;
+    padding: 12px;
+    font-size: 14px;
+  }
+
+  /* 2. Cuadrícula de Métricas a 2 columnas */
+  .gc-metrics-grid {
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+
+  .gc-metric-box {
+    padding: 10px;
+    align-items: center;
+    text-align: center;
+  }
+
+  .gc-metric-box strong {
+    font-size: 18px;
+  }
+
+  /* 3. Buscador y Herramientas */
+  .gc-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+    padding: 10px;
+    gap: 10px;
+    margin-top: 8px;
+  }
+
+  .gc-search {
+    max-width: 100%;
+    height: 44px;
+    box-sizing: border-box;
+    font-size: 14px;
+  }
+
+  .gc-toolbar > div {
+    flex-direction: column !important;
+    width: 100%;
+  }
+
+  .gc-toolbar > div > button {
+    width: 100%;
+    height: 44px;
+    font-size: 14px;
+  }
+
+  /* =========================================================
+     4. TABLA PRINCIPAL DE CLIENTES A TARJETAS
+     ========================================================= */
+  .gc-table-wrapper {
+    background: transparent;
+    border: none;
+    overflow: visible;
+  }
+
+  .gc-table, .gc-table tbody {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    gap: 12px;
+  }
+
+  .gc-table thead {
+    display: none; /* Desaparecen los encabezados de columnas de PC */
+  }
+
+  .gc-table tr {
+    display: flex;
+    flex-direction: column;
+    background: #ffffff;
+    padding: 16px 14px;
+    border-radius: 10px;
+    border: 1px solid #e2e8f0;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.04);
+    gap: 8px;
+  }
+
+  .gc-table td {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0;
+    border: none;
+    font-size: 14px;
+    text-align: right;
+  }
+
+  /* Reglas específicas para la tabla principal (Directorio de Clientes) */
+  .gc-table-wrapper .gc-table td:nth-child(1) { 
+    display: none; /* Ocultamos el ID en celular */
+  } 
+
+  .gc-table-wrapper .gc-table td:nth-child(2) {
+    font-size: 16px;
+    font-weight: 800;
+    color: #0f172a;
+    border-bottom: 1px solid #f1f5f9;
+    padding-bottom: 8px;
+    margin-bottom: 4px;
+    justify-content: flex-start;
+  }
+
+  /* Inyectamos los subtítulos sin tocar React */
+  .gc-table-wrapper .gc-table td:nth-child(3)::before { content: "Teléfono:"; font-weight: 600; color: #64748b; font-size: 13px; }
+  .gc-table-wrapper .gc-table td:nth-child(4)::before { content: "Puntos:"; font-weight: 600; color: #64748b; font-size: 13px; }
+  .gc-table-wrapper .gc-table td:nth-child(5)::before { content: "Equivalencia:"; font-weight: 600; color: #64748b; font-size: 13px; }
+  .gc-table-wrapper .gc-table td:nth-child(6)::before { content: "Compras:"; font-weight: 600; color: #64748b; font-size: 13px; }
+  .gc-table-wrapper .gc-table td:nth-child(7)::before { content: "Total Gastado:"; font-weight: 600; color: #64748b; font-size: 13px; }
+
+  /* Contenedor de los botones de acción */
+  .gc-actions {
+    width: 100%;
+    display: flex;
+    flex-wrap: wrap; 
+    gap: 8px;
+    justify-content: space-between !important;
+  }
+
+  .btn-gc-action {
+    flex: 1; /* Los botones se reparten el ancho disponible */
+    padding: 10px;
+    font-size: 13px;
+    text-align: center;
+  }
+
+  .gc-table td:last-child {
+    margin-top: 8px;
+    padding-top: 12px;
+    border-top: 1px dashed #cbd5e1;
+    justify-content: flex-end;
+  }
+
+  /* =========================================================
+     5. TABLA SECUNDARIA (HISTORIAL DE COMPRAS EN EL MODAL)
+     ========================================================= */
+  .modal-body .gc-table td:nth-child(1) {
+    font-size: 15px;
+    font-weight: bold;
+    color: #0f172a;
+    border-bottom: 1px solid #f1f5f9;
+    padding-bottom: 8px;
+    margin-bottom: 4px;
+    justify-content: flex-start;
+  }
+  
+  .modal-body .gc-table td:nth-child(2)::before { content: "Fecha:"; font-weight: 600; color: #64748b; font-size: 13px; }
+  .modal-body .gc-table td:nth-child(3)::before { content: "Método:"; font-weight: 600; color: #64748b; font-size: 13px; }
+  .modal-body .gc-table td:nth-child(4)::before { content: "Total:"; font-weight: 600; color: #64748b; font-size: 13px; }
+  .modal-body .gc-table td:nth-child(5)::before { content: "Puntos Ganados:"; font-weight: 600; color: #64748b; font-size: 13px; }
+  .modal-body .gc-table td:nth-child(6)::before { content: "Puntos Canjeados:"; font-weight: 600; color: #64748b; font-size: 13px; }
+
+  /* =========================================================
+     6. OPTIMIZACIÓN DE MODALES Y FORMULARIOS
+     ========================================================= */
+  .modal-overlay {
+    padding: 10px;
+    align-items: flex-start; /* Permite scroll natural si el modal es alto */
+    overflow-y: auto;
+  }
+
+  .modal-content {
+    width: 100% !important;
+    max-width: 100% !important;
+    margin-top: 10px;
+  }
+
+  .field-group input, 
+  .field-group select {
+    height: 44px;
+    font-size: 14px;
+    box-sizing: border-box;
+  }
+  
+  .modal-footer {
+    flex-direction: column;
+    gap: 8px;
+  }
+  
+  .modal-footer button {
+    width: 100%;
+    height: 44px;
+  }
+}

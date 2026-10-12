@@ -1,3 +1,6 @@
+/* =========================================================
+   ESTILOS GENERALES (ESCRITORIO)
+   ========================================================= */
 .gp-container {
   background-color: #f8f9fa;
   color: #212529;
@@ -36,7 +39,6 @@
   align-items: center;
 }
 
-/* Contenedor tipo píldora idéntico al de Historial y Reportes */
 .gp-tabs-nav {
   display: flex;
   gap: 6px;
@@ -209,7 +211,8 @@
 .thumb-img {
   width: 40px;
   height: 40px;
-  object-fit: cover;
+  object-fit: contain; /* <-- Cambiado para que no recorte la foto */
+  background-color: #ffffff; /* <-- Fondo blanco por si la foto no es cuadrada */
   border-radius: 4px;
   border: 1px solid #dee2e6;
 }
@@ -306,9 +309,9 @@
 }
 
 .gp-image-box img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain; /* <-- ESTO EVITA QUE LA IMAGEN SE RECORTE O SE VEA RARA */
 }
 
 .gp-image-placeholder {
@@ -511,7 +514,6 @@
   box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
 }
 
-/* --- AJUSTES DE ESPACIO PARA EL MODAL DE HISTORIAL --- */
 .gp-modal-historial {
   width: 980px;
   max-width: 95vw;
@@ -535,7 +537,6 @@
   margin-top: 20px;
 }
 
-/* Caja de Registro de Nueva Compra en el Modal */
 .box-nueva-compra {
   background-color: #f8fafc;
   border: 1px solid #cbd5e1;
@@ -560,7 +561,7 @@
 }
 
 .grid-nueva-compra .form-group {
-  min-width: 0; /* Evita que los inputs empujen el grid hacia afuera */
+  min-width: 0;
 }
 
 .grid-nueva-compra .form-group input {
@@ -568,7 +569,6 @@
   box-sizing: border-box;
 }
 
-/* Tabla del historial dentro del modal */
 .gp-modal-historial .gp-table {
   width: 100%;
   table-layout: fixed;
@@ -584,21 +584,20 @@
 }
 
 .gp-modal-historial .gp-table th:nth-child(1),
-.gp-modal-historial .gp-table td:nth-child(1) { width: 17%; } /* Fecha */
+.gp-modal-historial .gp-table td:nth-child(1) { width: 17%; }
 .gp-modal-historial .gp-table th:nth-child(2),
-.gp-modal-historial .gp-table td:nth-child(2) { width: 18%; } /* Proveedor */
+.gp-modal-historial .gp-table td:nth-child(2) { width: 18%; }
 .gp-modal-historial .gp-table th:nth-child(3),
-.gp-modal-historial .gp-table td:nth-child(3) { width: 13%; } /* Costo Caja */
+.gp-modal-historial .gp-table td:nth-child(3) { width: 13%; }
 .gp-modal-historial .gp-table th:nth-child(4),
-.gp-modal-historial .gp-table td:nth-child(4) { width: 10%; } /* Pzs/Caja */
+.gp-modal-historial .gp-table td:nth-child(4) { width: 10%; }
 .gp-modal-historial .gp-table th:nth-child(5),
-.gp-modal-historial .gp-table td:nth-child(5) { width: 13%; } /* Costo Unitario */
+.gp-modal-historial .gp-table td:nth-child(5) { width: 13%; }
 .gp-modal-historial .gp-table th:nth-child(6),
-.gp-modal-historial .gp-table td:nth-child(6) { width: 11%; } /* Compradas */
+.gp-modal-historial .gp-table td:nth-child(6) { width: 11%; }
 .gp-modal-historial .gp-table th:nth-child(7),
-.gp-modal-historial .gp-table td:nth-child(7) { width: 18%; } /* Nota */
+.gp-modal-historial .gp-table td:nth-child(7) { width: 18%; }
 
-/* Paginación */
 .gp-table th.sortable {
   cursor: pointer;
   user-select: none;
@@ -660,7 +659,6 @@
   color: #495057;
 }
 
-/* Visor de imágenes */
 .clickable-img {
   cursor: zoom-in;
   transition: transform 0.2s;
@@ -751,7 +749,6 @@
   gap: 10px;
 }
 
-/* Fila del selector de productos para Kits */
 .kit-selector-row {
   display: flex;
   gap: 10px;
@@ -808,7 +805,6 @@
   font-weight: 600;
 }
 
-/* Buscador en Kits */
 .kit-search-wrapper {
   position: relative;
   flex: 1;
@@ -833,7 +829,6 @@
   box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
 }
 
-/* Input de cantidad para el kit */
 .kit-selector-row input[type="number"] {
   width: 75px;
   height: 38px;
@@ -854,7 +849,6 @@
   box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
 }
 
-/* Botón + Agregar */
 .kit-selector-row .btn-primary {
   height: 38px;
   padding: 0 16px;
@@ -867,7 +861,6 @@
   white-space: nowrap;
 }
 
-/* Menú desplegable autocompletado */
 .kit-autocomplete-dropdown {
   position: absolute;
   top: calc(100% + 4px);
@@ -903,279 +896,292 @@
 }
 
 /* =========================================================
-   ADAPTACIÓN RESPONSIVA NATIVA Y LIMPIA PARA CELULARES (< 768px)
-   ========================================================= */
-/* =========================================================
-   ADAPTACIÓN RESPONSIVA EXACTA PARA CELULARES (< 768px)
+   ADAPTACIÓN RESPONSIVA NATIVA (DISEÑO TIPO TARJETAS MÓVILES)
    ========================================================= */
 @media (max-width: 768px) {
   .gp-container {
-    padding: 6px;
+    padding: 8px;
     background-color: #f8fafc;
     min-height: calc(100vh - 52px);
   }
 
-  /* 1. Header y navegación móvil */
   .gp-header {
-    background: #ffffff;
-    border-radius: 8px;
-    border: 1px solid #e2e8f0;
-    padding: 8px;
-    margin-bottom: 8px;
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
+    background: transparent;
+    border: none;
+    padding: 0;
+    margin-bottom: 12px;
   }
 
   .gp-branding {
-    display: none; /* Se oculta para no duplicar con la barra de la app */
+    display: none !important;
   }
 
   .gp-header-actions {
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 12px;
     width: 100%;
   }
 
-  /* Carrusel de pestañas (Catálogo, Kits, Promociones...) */
+  /* 1. Botones superiores apilados uno debajo del otro */
   .gp-tabs-nav {
-    display: flex;
-    overflow-x: auto;
-    white-space: nowrap;
-    gap: 6px;
-    padding: 3px;
-    background: #f1f5f9;
-    border-radius: 6px;
-    -webkit-overflow-scrolling: touch;
-    scrollbar-width: none;
-    width: 100%;
-    box-sizing: border-box;
-  }
-
-  .gp-tabs-nav::-webkit-scrollbar {
-    display: none;
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 8px !important;
+    width: 100% !important;
+    background: transparent !important;
+    padding: 0 !important;
   }
 
   .gp-tab-nav-btn {
-    padding: 6px 10px;
-    font-size: 11px;
-    flex-shrink: 0;
+    width: 100% !important;
+    padding: 12px !important;
+    font-size: 14px !important;
+    background: #ffffff !important;
+    border: 1px solid #cbd5e1 !important;
+    border-radius: 8px !important;
+    text-align: center !important;
+    justify-content: center !important;
   }
 
-  /* Ocultar botones pesados de PC en móvil */
+  .gp-tab-nav-btn.active {
+    background-color: #0f172a !important;
+    color: #ffffff !important;
+    border-color: #0f172a !important;
+  }
+
   .column-menu-wrapper,
   .gp-header-actions > .btn-secondary {
     display: none !important;
   }
 
-  /* Botón + Agregar Producto con tamaño normal y texto visible */
   .gp-header-actions .btn-primary {
     display: flex !important;
-    align-items: center;
-    justify-content: center;
     width: 100% !important;
-    height: 38px !important;
-    padding: 0 16px !important;
-    font-size: 13px !important;
-    font-weight: bold !important;
-    color: #ffffff !important;
-    background-color: #2563eb !important;
-    border-radius: 6px !important;
+    height: 46px !important;
+    justify-content: center !important;
+    align-items: center !important;
+    font-size: 15px !important;
+    border-radius: 8px !important;
     margin: 0 !important;
   }
 
-  /* 2. Filtros organizados en cuadrícula limpia */
+  /* 2. Filtros Apilados */
   .gp-catalogo-view {
-    padding: 8px;
-    gap: 8px;
+    padding: 0 !important;
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    gap: 12px !important;
+  }
+
+  .gp-filter-bar {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 10px !important;
+    width: 100% !important;
+  }
+
+  .gp-filter-bar .filter-group {
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+
+  .gp-filter-bar input,
+  .gp-filter-bar select {
+    width: 100% !important;
+    height: 44px !important;
+    font-size: 14px !important;
+    padding: 10px 14px !important;
+    border-radius: 8px !important;
+    border: 1px solid #cbd5e1 !important;
+  }
+
+  /* =========================================================
+     3. TABLA PRINCIPAL DEL CATÁLOGO -> DISEÑO DE TARJETAS
+     ========================================================= */
+  /* Aplicamos el diseño grid solo a la tabla dentro de .gp-table-container */
+  .gp-table-container {
+    width: 100% !important;
+    overflow: visible !important;
+    border: none !important;
+    background: transparent !important;
+  }
+
+  .gp-table-container .gp-table {
+    display: block !important;
+    width: 100% !important;
+  }
+
+  .gp-table-container .gp-table thead {
+    display: none !important; /* Oculta los títulos de columnas */
+  }
+
+  .gp-table-container .gp-table tbody {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 10px !important;
+    width: 100% !important;
+  }
+
+  .gp-table-container .gp-table tr {
+    display: grid !important;
+    grid-template-columns: 50px 1fr 70px !important;
+    grid-template-areas:
+      "img nombre precio"
+      "img nombre stock"
+      "img acciones acciones" !important;
+    background: #ffffff !important;
+    padding: 14px !important;
+    border: 1px solid #e2e8f0 !important;
+    border-radius: 10px !important;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.04) !important;
+    gap: 4px 10px !important;
+    align-items: start !important;
+  }
+
+  .gp-table-container .gp-table td {
+    border: none !important;
+    padding: 0 !important;
+  }
+
+  /* Ocultar columnas secundarias del catálogo */
+  .gp-table-container .gp-table td:nth-child(2),
+  .gp-table-container .gp-table td:nth-child(4),
+  .gp-table-container .gp-table td:nth-child(5),
+  .gp-table-container .gp-table td:nth-child(6),
+  .gp-table-container .gp-table td:nth-child(7),
+  .gp-table-container .gp-table td:nth-child(10) {
+    display: none !important;
+  }
+
+  .gp-table-container .gp-table td:nth-child(1) { grid-area: img; }
+  .gp-table-container .gp-table td:nth-child(3) { 
+    grid-area: nombre; font-size: 13px !important; font-weight: bold !important; color: #0f172a !important; white-space: normal !important; line-height: 1.3 !important;
+  }
+  .gp-table-container .gp-table td:nth-child(8) { 
+    grid-area: precio; text-align: right !important; font-size: 14px !important; font-weight: 800 !important; color: #16a34a !important; 
+  }
+  .gp-table-container .gp-table td:nth-child(9) { 
+    grid-area: stock; text-align: right !important; font-size: 12px !important; color: #64748b !important; font-weight: 600 !important;
+  }
+  .gp-table-container .gp-table td:nth-child(11) { 
+    grid-area: acciones; display: flex !important; justify-content: flex-end !important; gap: 8px !important; margin-top: 8px !important; padding-top: 10px !important; border-top: 1px dashed #cbd5e1 !important; 
+  }
+
+  .col-img { width: 50px !important; }
+  .thumb-img, .thumb-placeholder { width: 48px !important; height: 48px !important; border-radius: 8px !important; }
+
+
+  /* =========================================================
+     4. OTRAS TABLAS (PROMOCIONES, KITS, DEPTOS) -> TARJETAS GENÉRICAS
+     ========================================================= */
+  /* Aplicamos diseño genérico de tarjeta a las tablas que NO son el catálogo principal */
+  .gp-catalogo-view > .gp-table,
+  .gp-catalogo-view > div > .gp-table {
+    display: block !important;
+    width: 100% !important;
+    border: none !important;
+  }
+
+  .gp-catalogo-view > .gp-table thead,
+  .gp-catalogo-view > div > .gp-table thead {
+    display: none !important;
+  }
+
+  .gp-catalogo-view > .gp-table tbody,
+  .gp-catalogo-view > div > .gp-table tbody {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 12px !important;
+    width: 100% !important;
+  }
+
+  .gp-catalogo-view > .gp-table tr,
+  .gp-catalogo-view > div > .gp-table tr {
+    display: flex !important;
+    flex-direction: column !important;
+    background: #ffffff !important;
+    padding: 14px !important;
+    border: 1px solid #e2e8f0 !important;
+    border-radius: 10px !important;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.04) !important;
+    gap: 8px !important;
+    align-items: stretch !important;
+  }
+
+  .gp-catalogo-view > .gp-table td,
+  .gp-catalogo-view > div > .gp-table td {
+    display: flex !important;
+    flex-direction: row !important;
+    justify-content: space-between !important;
+    align-items: center !important;
+    width: 100% !important;
+    padding: 0 !important;
+    border: none !important;
+    font-size: 14px !important;
+    box-sizing: border-box !important;
+  }
+
+  /* El nombre/título de la promoción, kit o departamento destacará en negritas */
+  .gp-catalogo-view > .gp-table td:nth-child(1),
+  .gp-catalogo-view > div > .gp-table td:nth-child(2) {
+    font-weight: 800 !important;
+    color: #0f172a !important;
+    font-size: 15px !important;
+  }
+
+  /* El último elemento (Botón de eliminar/editar) se separa con una línea punteada y se va a la derecha */
+  .gp-catalogo-view > .gp-table td:last-child,
+  .gp-catalogo-view > div > .gp-table td:last-child {
+    margin-top: 8px !important;
+    padding-top: 12px !important;
+    border-top: 1px dashed #cbd5e1 !important;
+    justify-content: flex-end !important;
+  }
+
+
+  /* =========================================================
+     5. OTROS AJUSTES (Botones, Paginación, Formularios)
+     ========================================================= */
+  .btn-action {
+    padding: 8px 12px !important;
+    font-size: 14px !important;
+    border-radius: 6px !important;
+  }
+
+  .gp-pagination {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    align-items: center;
     background: #ffffff;
+    padding: 16px;
     border-radius: 8px;
     border: 1px solid #e2e8f0;
   }
 
-  .gp-filter-bar {
-    display: grid !important;
-    grid-template-columns: 1fr 1fr !important;
-    gap: 6px !important;
-    width: 100% !important;
-  }
-
-  /* Buscador ocupa toda la fila 1 */
-  .gp-filter-bar .filter-group.flex-1 {
-    grid-column: 1 / span 2 !important;
-    width: 100% !important;
-  }
-
-  .gp-filter-bar .filter-group.flex-1 input {
-    width: 100% !important;
-    box-sizing: border-box !important;
-    padding: 8px 10px !important;
-    font-size: 13px !important;
-    height: 36px !important;
-    border: 1px solid #cbd5e1 !important;
-    border-radius: 6px !important;
-  }
-
-  /* Selects de Depto y Paginación en la fila 2 (50% y 50%) */
-  .gp-filter-bar .filter-group:not(.flex-1) {
-    width: 100% !important;
-  }
-
-  .gp-filter-bar select {
-    width: 100% !important;
-    height: 36px !important;
-    padding: 6px 8px !important;
-    font-size: 12px !important;
-    border: 1px solid #cbd5e1 !important;
-    border-radius: 6px !important;
-    box-sizing: border-box !important;
-  }
-
-  /* 3. Tabla: Ocultar columnas secundarias de PC en celular */
-  .gp-table-container {
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
-    border: 1px solid #e2e8f0;
-    border-radius: 6px;
-    max-height: 52vh;
-  }
-
-  .gp-table {
-    width: 100%;
-    min-width: 0 !important; /* Permite que encaje en el ancho de la pantalla */
-    font-size: 12px;
-  }
-
-  /* Ocultamos Departamento, Categoría, Proveedor, Costo y Estado en pantalla chica */
-  .gp-table th:nth-child(4), .gp-table td:nth-child(4), /* Depto */
-  .gp-table th:nth-child(5), .gp-table td:nth-child(5), /* Cat */
-  .gp-table th:nth-child(6), .gp-table td:nth-child(6), /* Prov */
-  .gp-table th:nth-child(7), .gp-table td:nth-child(7), /* Costo */
-  .gp-table th:nth-child(10), .gp-table td:nth-child(10) /* Estado */ {
-    display: none !important;
-  }
-
-  .gp-table th, 
-  .gp-table td {
-    padding: 8px 6px;
-    vertical-align: middle;
-  }
-
-  .col-img {
-    width: 36px;
-  }
-
-  .thumb-img, .thumb-placeholder {
-    width: 32px;
-    height: 32px;
-  }
-
-  /* Columna Nombre fluida */
-  .col-nombre {
-    white-space: normal;
-    font-size: 12px;
-    line-height: 1.25;
-    min-width: 100px;
-  }
-
-  /* Precio destacado en verde */
-  .gp-table td:nth-child(8) {
-    font-weight: bold;
-    color: #16a34a;
-    font-size: 13px;
-    white-space: nowrap;
-  }
-
-  /* Stock */
-  .gp-table td:nth-child(9) {
-    font-weight: 600;
-    font-size: 11px;
-    white-space: nowrap;
-  }
-
-  .col-actions {
+  .pagination-controls {
     display: flex;
-    gap: 4px;
-    justify-content: center;
-  }
-
-  .btn-action {
-    padding: 4px 6px;
-    font-size: 12px;
-  }
-
-  /* 4. Paginación compacta */
-  .gp-pagination {
-    display: flex;
-    justify-content: space-between;
+    gap: 12px;
     align-items: center;
-    padding-top: 8px;
-    font-size: 11px;
   }
 
   .btn-page {
-    padding: 4px 8px;
-    font-size: 11px;
-  }
-
-  /* 5. Formulario de producto en móvil */
-  .gp-body {
-    grid-template-columns: 1fr;
-    padding: 10px;
-    gap: 10px;
-  }
-
-  .gp-image-box {
-    height: 140px;
-  }
-
-  .gp-form-grid {
-    grid-template-columns: 1fr;
-    gap: 8px;
-  }
-
-  .form-group.full-width {
-    grid-column: span 1;
-  }
-
-  .gp-footer {
-    grid-column: span 1;
-    display: flex;
-    gap: 8px;
-  }
-
-  .gp-footer button {
-    flex: 1;
-    padding: 10px;
+    padding: 10px 16px;
     font-size: 13px;
+    border-radius: 6px;
   }
 
-  /* Kits en móvil */
-  .gp-kits-builder {
-    grid-template-columns: 1fr;
-    gap: 12px;
-    padding: 10px;
-  }
-
-  .kit-selector-row {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .kit-selector-row input[type="number"],
-  .kit-selector-row .btn-primary {
-    width: 100%;
-    height: 36px;
-  }
-
-  .gp-modal-historial {
-    width: 95vw !important;
-    padding: 12px !important;
-  }
-
-  .grid-nueva-compra {
-    grid-template-columns: 1fr 1fr !important;
-    gap: 6px !important;
-  }
+  .gp-body { grid-template-columns: 1fr; padding: 12px; gap: 12px; }
+  .gp-image-box { height: 160px; }
+  .gp-form-grid { grid-template-columns: 1fr; gap: 10px; }
+  .form-group.full-width { grid-column: span 1; }
+  .gp-footer { grid-column: span 1; display: flex; gap: 10px; }
+  .gp-footer button { flex: 1; padding: 14px; font-size: 14px; }
+  .gp-kits-builder { grid-template-columns: 1fr; gap: 16px; padding: 12px; }
+  .kit-selector-row { flex-direction: column; align-items: stretch; }
+  .kit-selector-row input[type="number"], .kit-selector-row .btn-primary { width: 100%; height: 42px; }
+  .gp-modal-historial { width: 95vw !important; padding: 16px !important; }
+  .grid-nueva-compra { grid-template-columns: 1fr !important; gap: 10px !important; }
 }

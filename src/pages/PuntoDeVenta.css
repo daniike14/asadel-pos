@@ -129,7 +129,22 @@
 }
 
 .pos-table tr.selected-row {
-  background-color: #e0f2fe;
+  background-color: #bfdbfe; /* Un azul mucho más fuerte e intenso */
+  box-shadow: inset 4px 0 0 0 #2563eb; /* Línea gruesa azul oscura a la izquierda para resaltar */
+}
+
+.pos-table tr.selected-row td {
+  color: #0f172a; /* Oscurecemos el texto de la fila para que se lea perfecto */
+}
+
+.col-stock-pos {
+  text-align: center;
+  font-weight: 600;
+  color: #475569;
+}
+
+.pos-table tr.selected-row .col-stock-pos {
+  color: #0f172a; /* También oscurecemos el número de stock cuando se selecciona */
 }
 
 .pos-table tr:hover {
@@ -249,10 +264,10 @@
 
 /* Acciones Principales */
 .pos-checkout-actions {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  margin-top: auto;
+    position: static;
+    margin-top: 10px;
+    gap: 8px;
+    width: 100%;
 }
 
 .btn-main {
@@ -420,7 +435,8 @@
 .result-thumb {
   width: 48px;
   height: 48px;
-  object-fit: cover;
+  object-fit: contain; /* <-- Cambiado para que no recorte la foto */
+  background-color: #ffffff; /* <-- Fondo blanco */
   border-radius: 6px;
   border: 1px solid #e2e8f0;
 }
@@ -674,7 +690,7 @@
   border: 1px solid #cbd5e1;
   border-radius: 6px;
   box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.15), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
-  max-height: 320px;
+  max-height: 600px; /* <--- AUMENTAMOS ESTO PARA QUE QUEPAN MÁS RESULTADOS */
   overflow-y: auto;
   z-index: 1000;
   margin: 0;
@@ -718,7 +734,14 @@
 
 .pos-autocomplete-item:hover,
 .pos-autocomplete-item.active {
-  background-color: #e0f2fe;
+  background-color: #bfdbfe; /* Azul más fuerte e intenso */
+  box-shadow: inset 4px 0 0 0 #2563eb; /* Línea gruesa azul oscura a la izquierda */
+}
+
+/* Oscurecemos el texto del producto seleccionado para que contraste perfecto */
+.pos-autocomplete-item:hover .pos-autocomplete-name,
+.pos-autocomplete-item.active .pos-autocomplete-name {
+  color: #0f172a;
 }
 
 /* Columna 1: Producto */
@@ -1586,5 +1609,110 @@
     margin-top: 10px !important;
     padding-top: 8px !important;
     font-size: 10px !important;
+  }
+
+  
+}
+
+/* =========================================================
+   NUEVOS ESTILOS PARA LA VENTANA DE COBRO (MÉTODOS DE PAGO)
+   ========================================================= */
+.payment-method-selector {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 6px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+
+.payment-method-selector::-webkit-scrollbar {
+  display: none;
+}
+
+.pay-tab {
+  flex: 1;
+  padding: 10px;
+  background-color: #f1f5f9;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #475569;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.2s;
+}
+
+.pay-tab:hover {
+  background-color: #e2e8f0;
+}
+
+.pay-tab.active {
+  background-color: #0f172a;
+  color: #ffffff;
+  border-color: #0f172a;
+}
+
+.exact-payment-notice {
+  background-color: #eff6ff;
+  border: 2px dashed #93c5fd;
+  color: #1e40af;
+  padding: 20px;
+  border-radius: 8px;
+  text-align: center;
+  font-size: 15px;
+  line-height: 1.4;
+}
+
+/* Letras Gigantes para el Total y el Cambio en el Resumen */
+.payment-summary {
+  background-color: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  padding: 16px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.summary-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 16px;
+  color: #475569;
+}
+
+.summary-row strong {
+  font-size: 22px;
+  color: #0f172a;
+}
+
+.summary-row.change-amount strong {
+  color: #16a34a !important;
+  font-size: 32px !important; 
+}
+
+.summary-row.pending-amount strong {
+  color: #dc2626 !important;
+  font-size: 32px !important; 
+}
+
+@media (max-width: 768px) {
+  .payment-method-selector {
+    flex-wrap: wrap;
+  }
+  
+  .pay-tab {
+    flex: 1 1 30%;
+  }
+
+  .summary-row.change-amount strong,
+  .summary-row.pending-amount strong {
+    font-size: 26px !important; /* Un poco más pequeño en celular, pero sigue gigante */
+  }
+
+  .col-stock-pos {
+    display: none !important;
   }
 }
