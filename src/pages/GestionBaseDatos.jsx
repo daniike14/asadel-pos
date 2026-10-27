@@ -11,12 +11,25 @@ export default function GestionBaseDatos({ volverAlDashboard }) {
     ultimoRespaldo: null,
     respaldosLocales: []
   });
+
   const [frecuenciaSeleccionada, setFrecuenciaSeleccionada] = useState('diario');
   const [procesando, setProcesando] = useState(false);
+  
+  // Estados para el Borrado de Base de Datos
+  const [modalBorrar, setModalBorrar] = useState(false);
+  const [passwordAdmin, setPasswordAdmin] = useState('');
+
+  // Detectamos al usuario activo para asegurar que solo el admin vea los botones de mantenimiento crítico
+  const [usuarioActivo] = useState(() => {
+    const sesion = sessionStorage.getItem('asadel_usuario_sesion');
+    return sesion ? JSON.parse(sesion) : null;
+  });
+
   const [logoEmpresa, setLogoEmpresa] = useState(logoDefault);
   useEffect(() => {
     const logoActual = localStorage.getItem('asadel_logo_temp');
     if (logoActual) setLogoEmpresa(logoActual);
+
     const escucharCambioEmpresa = () => {
         const logoNuevo = localStorage.getItem('asadel_logo_temp');
         if (logoNuevo) setLogoEmpresa(logoNuevo);
@@ -24,6 +37,7 @@ export default function GestionBaseDatos({ volverAlDashboard }) {
     window.addEventListener('empresa-actualizada', escucharCambioEmpresa);
     return () => window.removeEventListener('empresa-actualizada', escucharCambioEmpresa);
   }, []);
+
   const fileInputDbRef = useRef(null);
 
   const cargarEstadoBD = async () => {
@@ -57,7 +71,7 @@ export default function GestionBaseDatos({ volverAlDashboard }) {
         body: JSON.stringify({ frecuencia: frecuenciaSeleccionada })
       });
       if (res.ok) {
-        alert('✅ ¡Frecuencia de respaldo guardada con éxito!');
+        alert('✅ Frecuencia de respaldo guardada con éxito!');
         cargarEstadoBD();
       }
     } catch {
@@ -70,7 +84,7 @@ export default function GestionBaseDatos({ volverAlDashboard }) {
     try {
       const res = await fetch(`${API_URL}/api/backup/generar-manual`, { method: 'POST' });
       if (res.ok) {
-        alert('✅ ¡Copia de seguridad guardada en el almacenamiento local del negocio!');
+        alert('💾 Copia de seguridad guardada en el almacenamiento local del negocio!');
         cargarEstadoBD();
       }
     } catch {
@@ -86,7 +100,7 @@ export default function GestionBaseDatos({ volverAlDashboard }) {
     try {
       const res = await fetch(`${API_URL}/api/backup/optimizar`, { method: 'POST' });
       if (res.ok) {
-        alert('🚀 ¡Base de datos optimizada y compactada exitosamente!');
+        alert('🚀 Base de datos optimizada y compactada exitosamente!');
         cargarEstadoBD();
       }
     } catch {
@@ -114,9 +128,8 @@ export default function GestionBaseDatos({ volverAlDashboard }) {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ archivoBase64: base64Contenido })
         });
-
         if (res.ok) {
-          alert('✅ ¡Base de datos restaurada con éxito! La página se recargará.');
+          alert('✅ Base de datos restaurada con éxito! La página se recargará.');
           window.location.reload();
         } else {
           const errData = await res.json();
@@ -129,6 +142,45 @@ export default function GestionBaseDatos({ volverAlDashboard }) {
       }
     };
     reader.readAsDataURL(file);
+  };
+
+  // Función para ejecutar el borrado y restablecimiento de fábrica
+  const ejecutarBorradoBD = async (e) => {
+    e.preventDefault();
+    
+    setProcesando(true);
+    try {
+      const res = await fetch(`${API_URL}/api/backup/borrar-db`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: passwordAdmin })
+      });
+
+      if (res.ok) {
+        alert('💥 Base de datos eliminada. El sistema se ha restablecido de fábrica exitosamente.\n\nPor seguridad, tu sesión se cerrará y la contraseña del administrador ha vuelto a ser "admin123".');
+        sessionStorage.removeItem('asadel_usuario_sesion'); // Cerramos la sesión
+        localStorage.clear(); // Limpiamos la caché para que no queden fondos pegados
+        window.location.reload(); // Recarga al login
+      } else {
+        const err = await res.json();
+        alert(err.error || 'Error al borrar la base de datos.');
+      }
+    } catch {
+      alert('Error de conexión con el servidor al intentar borrar la base.');
+    } finally {
+      setProcesando(false);
+      setPasswordAdmin('');
+    }
+  };
+
+  // Función para limpiar únicamente la memoria caché/interfaz sin tocar las tablas
+  const limpiarCacheVisual = () => {
+    if (window.confirm("¿Deseas limpiar la memoria caché de la pantalla?\n\nEsto arreglará fondos de caja pegados y preferencias visuales, pero NO borrará tus productos, ventas ni clientes.")) {
+      localStorage.clear();
+      sessionStorage.removeItem('asadel_usuario_sesion');
+      alert("🧹 Memoria caché limpia. El sistema se recargará.");
+      window.location.reload();
+    }
   };
 
   return (
@@ -168,6 +220,7 @@ export default function GestionBaseDatos({ volverAlDashboard }) {
 
       {/* Secciones de Trabajo */}
       <div className="bd-sections-grid">
+        
         {/* Panel Izquierdo: Acciones de Respaldo */}
         <div className="bd-box">
           <h3>Copias de Seguridad (Backup)</h3>
@@ -177,7 +230,7 @@ export default function GestionBaseDatos({ volverAlDashboard }) {
 
           <div className="bd-actions-row">
             <button className="btn-big-action primary" onClick={descargarRespaldo}>
-              <span style={{ fontSize: '22px' }}>⬇️</span>
+              <span style={{ fontSize: '22px' }}>📥</span>
               <div>
                 <div>Descargar Respaldo Ahora (.db)</div>
                 <small style={{ fontWeight: 'normal', opacity: 0.9 }}>
@@ -187,7 +240,7 @@ export default function GestionBaseDatos({ volverAlDashboard }) {
             </button>
 
             <button className="btn-big-action" onClick={() => fileInputDbRef.current.click()}>
-              <span style={{ fontSize: '22px' }}>⬆️️</span>
+              <span style={{ fontSize: '22px' }}>📂</span>
               <div>
                 <div>Cargar / Restaurar Respaldo (.db)</div>
                 <small style={{ fontWeight: 'normal', color: '#64748b' }}>
@@ -198,7 +251,7 @@ export default function GestionBaseDatos({ volverAlDashboard }) {
             <input type="file" ref={fileInputDbRef} style={{ display: 'none' }} accept=".db" onChange={manejarSubidaBD} />
 
             <button className="btn-big-action" onClick={generarCopiaLocal} disabled={procesando}>
-              <span style={{ fontSize: '22px' }}>📂</span>
+              <span style={{ fontSize: '22px' }}>💾</span>
               <div>
                 <div>Crear Copia Local Inmediata</div>
                 <small style={{ fontWeight: 'normal', color: '#64748b' }}>
@@ -208,7 +261,7 @@ export default function GestionBaseDatos({ volverAlDashboard }) {
             </button>
 
             <button className="btn-big-action" onClick={optimizarBaseDatos} disabled={procesando}>
-              <span style={{ fontSize: '22px' }}>⚡</span>
+              <span style={{ fontSize: '22px' }}>🚀</span>
               <div>
                 <div>Compactar y Optimizar Base de Datos (VACUUM)</div>
                 <small style={{ fontWeight: 'normal', color: '#64748b' }}>
@@ -216,6 +269,40 @@ export default function GestionBaseDatos({ volverAlDashboard }) {
                 </small>
               </div>
             </button>
+
+            {/* BOTÓN PARA LIMPIAR CACHÉ VISUAL */}
+            <button 
+              className="btn-big-action warning" 
+              style={{ marginTop: '10px' }}
+              onClick={limpiarCacheVisual} 
+              disabled={procesando}
+            >
+              <span style={{ fontSize: '22px' }}>🧹</span>
+              <div>
+                <div>Limpiar Memoria Caché (Interfaz)</div>
+                <small style={{ fontWeight: 'normal', color: '#a16207' }}>
+                  Restablece fondos de caja trabados y opciones visuales sin borrar datos
+                </small>
+              </div>
+            </button>
+
+            {/* BOTÓN PELIGROSO: BORRAR BASE DE DATOS */}
+            {usuarioActivo?.rol === 'admin' && (
+              <button 
+                className="btn-big-action danger" 
+                style={{ marginTop: '6px' }}
+                onClick={() => setModalBorrar(true)} 
+                disabled={procesando}
+              >
+                <span style={{ fontSize: '22px' }}>⚠️</span>
+                <div>
+                  <div>Borrar Base de Datos (Restablecer de Fábrica)</div>
+                  <small style={{ fontWeight: 'normal', color: '#64748b' }}>
+                    Elimina toda la información y deja el sistema completamente en blanco
+                  </small>
+                </div>
+              </button>
+            )}
           </div>
         </div>
 
@@ -237,7 +324,7 @@ export default function GestionBaseDatos({ volverAlDashboard }) {
               <option value="desactivado">Desactivado (Solo respaldos manuales)</option>
             </select>
             <button type="submit" className="btn-primary" style={{ alignSelf: 'flex-start' }}>
-              💾 Guardar Frecuencia
+                Guardar Frecuencia
             </button>
           </form>
 
@@ -269,6 +356,57 @@ export default function GestionBaseDatos({ volverAlDashboard }) {
           </table>
         </div>
       </div>
+
+      {/* MODAL DE ADVERTENCIA PARA BORRAR BASE DE DATOS */}
+      {modalBorrar && (
+        <div className="modal-overlay-bd">
+          <div className="modal-content-bd" style={{ width: '400px' }}>
+            <div className="modal-header-bd danger">
+              <h2>⚠️ PELIGRO: BORRAR SISTEMA</h2>
+              <button type="button" className="btn-close-modal-bd" onClick={() => setModalBorrar(false)}>✕</button>
+            </div>
+            <form onSubmit={ejecutarBorradoBD} className="modal-body-bd">
+              <p style={{ margin: 0, fontSize: '13px', color: '#64748b' }}>
+                Esta acción <strong>eliminará todos los productos, ventas, clientes y cortes</strong> de forma permanente. El sistema quedará como nuevo, tal y como se instaló la primera vez.
+              </p>
+              
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '10px' }}>
+                <label style={{ fontSize: '13px', fontWeight: 'bold' }}>
+                  Contraseña de Administrador:
+                </label>
+                <input
+                  type="password"
+                  required
+                  placeholder="Confirma tu contraseña para continuar..."
+                  value={passwordAdmin}
+                  onChange={(e) => setPasswordAdmin(e.target.value)}
+                  autoFocus
+                  style={{ padding: '10px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '14px' }}
+                />
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '15px' }}>
+                <button 
+                  type="button" 
+                  className="btn-secondary" 
+                  onClick={() => setModalBorrar(false)}
+                >
+                  Cancelar
+                </button>
+                <button 
+                  type="submit" 
+                  className="btn-primary" 
+                  style={{ backgroundColor: '#dc2626' }} 
+                  disabled={procesando}
+                >
+                  {procesando ? 'Borrando...' : 'Sí, Borrar Todo'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }

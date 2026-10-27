@@ -1,3 +1,4 @@
+// @ts-nocheck
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import logoPorDefecto from '../assets/Logo.jpg';
 import './PuntoDeVenta.css';
@@ -15,8 +16,44 @@ const formatoEmpaque = (totalPiezas, piezasPorCaja) => {
   return `${cajas} caja(s) + ${sueltas} pzs (${totalPiezas} pzs tot.)`;
 };
 
+// FUNCIÓN AUXILIAR DE REDONDEO PARA PRODUCTOS A GRANEL
+const aplicarReglaGranelAsadel = (precioUnitario, cantidad, descuento = 0) => {
+  const subSinDesc = precioUnitario * cantidad;
+  const subtotal = subSinDesc * (1 - (descuento || 0) / 100);
+
+  if (Number.isInteger(cantidad)) {
+    return subtotal;
+  }
+
+  if (subtotal % 1 !== 0) {
+    return Math.ceil(subtotal);
+  }
+
+  return subtotal + 1;
+};
+
+// CÁLCULO DINÁMICO DE STOCK PARA KITS SEGÚN EL INVENTARIO DE SUS COMPONENTES
+const calcularStockMaximoKit = (componentes, catalogoItems) => {
+  if (!componentes || componentes.length === 0) return 0;
+
+  const limites = componentes.map((comp) => {
+    const prodFisico = catalogoItems.find((p) => p.id === comp.producto_id && !p.esVentaPaquete && !p.esKit);
+    const stockActual = prodFisico ? (parseFloat(prodFisico.invActual) || parseFloat(prodFisico.stock) || 0) : 0;
+    const cantRequerida = parseFloat(comp.cantidad) || 1;
+
+    return Math.floor(stockActual / cantRequerida);
+  });
+
+  return Math.max(0, Math.min(...limites));
+};
+
 export default function PuntoDeVenta() {
   const [catalogo, setCatalogo] = useState([]);
+  const [usuarioActivo, setUsuarioActivo] = useState(() => {
+    const sesion = sessionStorage.getItem('asadel_usuario_sesion');
+    return sesion ? JSON.parse(sesion) : { nombre: 'Cajero', rol: 'cajero' };
+  });
+
   const [promocionesActivas, setPromocionesActivas] = useState([
     { id: 'PROMO_NINGUNA', nombre: 'Sin promoción', tipo: 'ninguno', valor: 0 }
   ]);
@@ -33,30 +70,26 @@ export default function PuntoDeVenta() {
   const [mostrarModalEditarItem, setMostrarModalEditarItem] = useState(false);
   const [ventaFinalizada, setVentaFinalizada] = useState(null);
 
-  // Estados de Cobro y Métodos de Pago
   const [mostrarModalCobro, setMostrarModalCobro] = useState(false);
-  const [metodoPago, setMetodoPago] = useState('efectivo'); // efectivo, tarjeta, vales, codi, mixto
+  const [metodoPago, setMetodoPago] = useState('efectivo');
   const [montoEfectivo, setMontoEfectivo] = useState('');
   const [montoTarjeta, setMontoTarjeta] = useState('');
   const [montoVales, setMontoVales] = useState('');
   const [montoCodi, setMontoCodi] = useState('');
   const inputMontoEfectivoRef = useRef(null);
 
-  // Estados de Fidelización / Clientes
   const [busquedaCliente, setBusquedaCliente] = useState('');
   const [sugerenciasClientes, setSugerenciasClientes] = useState([]);
   const [mostrarSugerenciasClientes, setMostrarSugerenciasClientes] = useState(false);
   const [clienteActivo, setClienteActivo] = useState(null);
   const [canjearPuntos, setCanjearPuntos] = useState(false);
   
-  // Reglas dinámicas de lealtad
   const [reglasLealtad, setReglasLealtad] = useState({
     valor_punto_pesos: 1.0,
     minimo_puntos_canje: 0,
     porcentaje_max_descuento: 100
   });
 
-  // Datos dinámicos de la Empresa
   const [datosEmpresa, setDatosEmpresa] = useState({
     nombre: 'PAPELERÍA ASADEL',
     sucursal: '',
@@ -68,30 +101,46 @@ export default function PuntoDeVenta() {
     max_resultados_busqueda: 8
   });
 
-  // Alta rápida de cliente
   const [mostrarAltaRapida, setMostrarAltaRapida] = useState(false);
   const [nuevoClienteNombre, setNuevoClienteNombre] = useState('');
   const [nuevoClienteTelefono, setNuevoClienteTelefono] = useState('');
 
-  // Estado para Artículo No Inventariado / Venta Rápida
   const [datosArticuloRapido, setDatosArticuloRapido] = useState({
     nombre: '',
     precio: '',
     cantidad: 1
   });
 
-// --- NUEVO: ESTADOS DE APERTURA DE CAJA ---
   const [cajaAbierta, setCajaAbierta] = useState(() => {
-    const fechaHoy = new Date().toISOString().split('T')[0];
+    const fechaHoy = new Date().getFullYear() + '-' + String(new Date().getMonth() + 1).padStart(2, '0') + '-' + String(new Date().getDate()).padStart(2, '0');
     return !!localStorage.getItem(`caja_abierta_${fechaHoy}`);
   });
   const [modalApertura, setModalApertura] = useState(false);
   const [fondoInicial, setFondoInicial] = useState('');
 
+  const [cierrePendienteData, setCierrePendienteData] = useState(null);
+  const [modalCierrePendiente, setModalCierrePendiente] = useState(false);
+  const [billetesPendiente, setBilletesPendiente] = useState('');
+  const [morrallaPendiente, setMorrallaPendiente] = useState('');
+
   useEffect(() => {
-    const verificarApertura = () => {
-      // Usamos un formato de fecha universal a prueba de fallos (YYYY-MM-DD)
-      const fechaHoy = new Date().toISOString().split('T')[0];
+    const verificarEstadoCaja = async () => {
+      try {
+        const resPendiente = await fetch(`${API_URL}/api/cierre-global/pendiente`);
+        if (resPendiente.ok) {
+          const dataPend = await resPendiente.json();
+          if (dataPend.tienePendiente) {
+            setCierrePendienteData(dataPend);
+            setModalCierrePendiente(true);
+            setModalApertura(false);
+            return;
+          }
+        }
+      } catch (err) {
+        console.warn('Error al verificar cierre pendiente:', err);
+      }
+
+      const fechaHoy = new Date().getFullYear() + '-' + String(new Date().getMonth() + 1).padStart(2, '0') + '-' + String(new Date().getDate()).padStart(2, '0');
       const abierta = localStorage.getItem(`caja_abierta_${fechaHoy}`);
       
       if (!abierta) {
@@ -103,10 +152,52 @@ export default function PuntoDeVenta() {
       }
     };
     
-    verificarApertura();
-    window.addEventListener('focus', verificarApertura);
-    return () => window.removeEventListener('focus', verificarApertura);
+    verificarEstadoCaja();
+    window.addEventListener('focus', verificarEstadoCaja);
+    return () => window.removeEventListener('focus', verificarEstadoCaja);
   }, []);
+
+  const guardarCierrePendiente = async (e) => {
+    e.preventDefault();
+    if (!cierrePendienteData) return;
+
+    const b = parseFloat(billetesPendiente) || 0;
+    const m = parseFloat(morrallaPendiente) || 0;
+    const totalFisico = b + m;
+
+    const payload = {
+      caja_inicial: 0,
+      billetes: b,
+      morralla: m,
+      total_fisico: totalFisico,
+      ventas_dia: cierrePendienteData.ventasDia,
+      ganancia_estimada: cierrePendienteData.gananciaEstimada,
+      fecha_hora: `${cierrePendienteData.fechaPendiente}T23:59:59`
+    };
+
+    try {
+      const res = await fetch(`${API_URL}/api/cierre-global`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      if (res.ok) {
+        alert(`✅ Cierre de caja del día ${cierrePendienteData.fechaPendiente} registrado con éxito.`);
+        setModalCierrePendiente(false);
+        setCierrePendienteData(null);
+        setBilletesPendiente('');
+        setMorrallaPendiente('');
+        
+        setCajaAbierta(false);
+        setModalApertura(true);
+      } else {
+        alert('Error al registrar el cierre de caja pendiente.');
+      }
+    } catch {
+      alert('Error de conexión al guardar el cierre pendiente.');
+    }
+  };
 
   const registrarApertura = async (e) => {
     e.preventDefault();
@@ -121,12 +212,12 @@ export default function PuntoDeVenta() {
             tipo: 'entrada',
             monto: monto,
             motivo: 'Fondo de caja inicial',
-            cajero: 'Turno 1' 
+            cajero: usuarioActivo.nombre 
           })
         });
       }
       
-      const fechaHoy = new Date().toISOString().split('T')[0];
+      const fechaHoy = new Date().getFullYear() + '-' + String(new Date().getMonth() + 1).padStart(2, '0') + '-' + String(new Date().getDate()).padStart(2, '0');
       localStorage.setItem(`caja_abierta_${fechaHoy}`, monto.toString());
       setCajaAbierta(true);
       setModalApertura(false);
@@ -136,7 +227,6 @@ export default function PuntoDeVenta() {
     }
   };
 
-  // Alerta discreta de Stock Mínimo
   const [alertaStock, setAlertaStock] = useState(null);
   const timerAlertaRef = useRef(null);
 
@@ -156,7 +246,6 @@ export default function PuntoDeVenta() {
     localStorage.setItem('asadel_carrito_temporal', JSON.stringify(carrito));
   }, [carrito]);
 
-  // Auto-foco cuando el modal de cobro se abre
   useEffect(() => {
     if (mostrarModalCobro && (metodoPago === 'efectivo' || metodoPago === 'mixto')) {
       const timer = setTimeout(() => {
@@ -203,6 +292,12 @@ export default function PuntoDeVenta() {
             aGranel: Boolean(p.aGranel),
             esServicio: Boolean(p.esServicio),
             noInventariado: Boolean(p.noInventariado),
+            redondear_granel: Boolean(p.redondear_granel),
+            tipo_redondeo: p.tipo_redondeo || 'peso_arriba',
+            insumo_producto_id: p.insumo_producto_id || null,
+            insumo_cantidad: parseFloat(p.insumo_cantidad) || 0,
+            insumo_stock: parseFloat(p.insumo_stock) || 0,
+            insumo_nombre: p.insumo_nombre || '',
             esKit: false,
             esVentaPaquete: false
           });
@@ -225,6 +320,10 @@ export default function PuntoDeVenta() {
               aGranel: false,
               esServicio: false,
               noInventariado: false,
+              insumo_producto_id: null,
+              insumo_cantidad: 0,
+              insumo_stock: 0,
+              insumo_nombre: '',
               esKit: false,
               esVentaPaquete: true
             });
@@ -234,23 +333,30 @@ export default function PuntoDeVenta() {
 
       if (resKits.ok) {
         const dataKits = await resKits.json();
-        const kitsNormalizados = dataKits.map((k) => ({
-          id: `KIT_${k.id}`,
-          id_busqueda: `KIT_${k.id}`,
-          kit_id: k.id,
-          codigo: k.codigo || '',
-          nombre: `[PAQUETE/KIT] ${k.nombre}`,
-          precioUnitario: parseFloat(k.precio) || 0,
-          ubicacion: 'Área de Kits',
-          stock: 999,
-          invMinimo: 0,
-          piezasPorPaquete: 1,
-          imagenLocacion: '',
-          puntosLealtad: 0,
-          esKit: true,
-          esVentaPaquete: false,
-          componentes: k.items || []
-        }));
+        const kitsNormalizados = dataKits.map((k) => {
+          const comps = k.items || [];
+          const stockCalculado = calcularStockMaximoKit(comps, itemsCombinados);
+
+          return {
+            id: `KIT_${k.id}`,
+            id_busqueda: `KIT_${k.id}`,
+            kit_id: k.id,
+            codigo: k.codigo || '',
+            nombre: `[PAQUETE/KIT] ${k.nombre}`,
+            precioUnitario: parseFloat(k.precio) || 0,
+            ubicacion: 'Área de Kits',
+            stock: stockCalculado,
+            invMinimo: 0,
+            piezasPorPaquete: 1,
+            imagenLocacion: '',
+            puntosLealtad: 0,
+            insumo_producto_id: null,
+            insumo_cantidad: 0,
+            esKit: true,
+            esVentaPaquete: false,
+            componentes: comps
+          };
+        });
         itemsCombinados = [...itemsCombinados, ...kitsNormalizados];
       }
 
@@ -298,8 +404,28 @@ export default function PuntoDeVenta() {
 
   const [busqueda, setBusqueda] = useState('');
   const [sugerencias, setSugerencias] = useState([]);
+  
+  const [mostrarPaquetes, setMostrarPaquetes] = useState(() => {
+    const guardado = localStorage.getItem('asadel_pos_ver_paquetes');
+    return guardado ? JSON.parse(guardado) : false;
+  });
+
+  useEffect(() => {
+    localStorage.setItem('asadel_pos_ver_paquetes', JSON.stringify(mostrarPaquetes));
+  }, [mostrarPaquetes]);
+
   const [mostrarSugerencias, setMostrarSugerencias] = useState(false);
   const [indiceSeleccionado, setIndiceSeleccionado] = useState(-1);
+  
+  const [mostrarDetallesProd, setMostrarDetallesProd] = useState(() => {
+    const guardado = localStorage.getItem('asadel_pos_ver_info');
+    return guardado ? JSON.parse(guardado) : false;
+  });
+
+  useEffect(() => {
+    localStorage.setItem('asadel_pos_ver_info', JSON.stringify(mostrarDetallesProd));
+  }, [mostrarDetallesProd]);
+
   const contenedorBusquedaRef = useRef(null);
 
   const [ventasEnEspera, setVentasEnEspera] = useState([]);
@@ -353,10 +479,25 @@ export default function PuntoDeVenta() {
   useEffect(() => {
     const termino = busqueda.trim().toLowerCase();
     if (termino.length >= 1) {
-      const coincidencias = catalogo.filter((p) =>
-        p.nombre.toLowerCase().includes(termino) ||
-        p.codigo.toLowerCase().includes(termino)
-      ).slice(0, 50); 
+      const coincidencias = catalogo
+        .filter((p) => {
+          const coincide = p.nombre.toLowerCase().includes(termino) || p.codigo.toLowerCase().includes(termino);
+          if (!coincide) return false;
+          if (!mostrarPaquetes && p.esVentaPaquete) return false;
+          return true;
+        })
+        .sort((a, b) => {
+          const nombreA = a.nombre.replace(/^📦 \[PAQUETE de \d+ pzs\] |^\[PAQUETE\/KIT\] /i, '').trim();
+          const nombreB = b.nombre.replace(/^📦 \[PAQUETE de \d+ pzs\] |^\[PAQUETE\/KIT\] /i, '').trim();
+
+          const empiezaA = nombreA.toLowerCase().startsWith(termino);
+          const empiezaB = nombreB.toLowerCase().startsWith(termino);
+          if (empiezaA && !empiezaB) return -1;
+          if (!empiezaA && empiezaB) return 1;
+
+          return nombreA.localeCompare(nombreB, 'es', { sensitivity: 'base', numeric: true });
+        })
+        .slice(0, 50);
 
       setSugerencias(coincidencias);
       setMostrarSugerencias(coincidencias.length > 0);
@@ -366,7 +507,7 @@ export default function PuntoDeVenta() {
       setMostrarSugerencias(false);
       setIndiceSeleccionado(-1);
     }
-  }, [busqueda, catalogo]);
+  }, [busqueda, catalogo, mostrarPaquetes]);
 
   useEffect(() => {
     const clickAfuera = (e) => {
@@ -378,12 +519,12 @@ export default function PuntoDeVenta() {
     return () => document.removeEventListener('mousedown', clickAfuera);
   }, []);
 
-  // Totales matemáticos
   const subtotalCarrito = carrito.reduce((acc, item) => {
     const cant = parseFloat(item.cantidad) || 0;
-    const sub = item.precioUnitario * cant;
-    const conDescuento = sub * (1 - (item.descuento || 0) / 100);
-    return acc + conDescuento;
+    const totalRenglon = item.aGranel
+      ? aplicarReglaGranelAsadel(item.precioUnitario, cant, item.descuento)
+      : (item.precioUnitario * cant) * (1 - (item.descuento || 0) / 100);
+    return acc + totalRenglon;
   }, 0);
 
   const puntosGanadosCompra = carrito.reduce((acc, item) => {
@@ -502,7 +643,10 @@ export default function PuntoDeVenta() {
       esServicio: false,
       aGranel: false,
       esKit: false,
-      esVentaPaquete: false
+      esVentaPaquete: false,
+      insumo_producto_id: null,
+      insumo_cantidad: 0,
+      insumo_stock: 0
     };
 
     setCarrito((prev) => [...prev, itemComun]);
@@ -527,14 +671,6 @@ export default function PuntoDeVenta() {
 
   const imprimirCotizacion = () => {
     window.print();
-  };
-
-  const abrirNotaImpresion = () => {
-    if (carrito.length === 0 && !ventaFinalizada) {
-      alert('⚠️ No hay productos en la venta activa ni venta reciente para imprimir.');
-      return;
-    }
-    setModalActivo('ticket');
   };
 
   const abrirCerrarTurno = async () => {
@@ -563,7 +699,7 @@ export default function PuntoDeVenta() {
     const diferencia = contadoNum - datosCorte.saldoEsperado;
 
     const payload = {
-      cajero: 'Turno 1',
+      cajero: usuarioActivo.nombre,
       ventasEfectivo: datosCorte.ventasEfectivo,
       ventasTarjeta: datosCorte.ventasTarjeta,
       ventasVales: datosCorte.ventasVales,
@@ -599,14 +735,13 @@ export default function PuntoDeVenta() {
     }
   };
 
-  // Cambio de cantidad validando stock disponible físico
   const cambiarCantidadTabla = useCallback((idUnico, nuevaCantidad, delta = 0) => {
     setCarrito((prev) => {
       const itemAfectado = prev.find((it) => (it.id_unico || it.id) === idUnico);
       if (!itemAfectado) return prev;
 
       let cantCalculada;
-      const paso = (itemAfectado.aGranel || itemAfectado.esServicio) ? 0.5 : 1;
+      const paso = itemAfectado.aGranel ? 0.5 : 1;
 
       if (delta !== 0) {
         const actual = parseFloat(itemAfectado.cantidad) || 0;
@@ -616,7 +751,6 @@ export default function PuntoDeVenta() {
         if (isNaN(cantCalculada) || cantCalculada <= 0) return prev;
       }
 
-      // Validar si es producto físico
       if (!itemAfectado.esKit && !itemAfectado.esServicio && !itemAfectado.noInventariado) {
         const pzaProd = catalogo.find(c => c.id === itemAfectado.id && !c.esVentaPaquete);
         const stockPiezasTotal = pzaProd ? parseFloat(pzaProd.stock) : (parseFloat(itemAfectado.stockPiezasBase) || parseFloat(itemAfectado.stock) || 0);
@@ -639,6 +773,23 @@ export default function PuntoDeVenta() {
         if (remanente <= (itemAfectado.invMinimo || 0)) {
           dispararAlertaStock(itemAfectado.nombre, remanente, itemAfectado.invMinimo || 0);
         }
+      } else if (itemAfectado.esServicio && itemAfectado.insumo_producto_id && parseFloat(itemAfectado.insumo_cantidad) > 0) {
+        const pzaInsumo = catalogo.find(c => c.id === itemAfectado.insumo_producto_id && !c.esVentaPaquete);
+        const stockInsumo = pzaInsumo ? parseFloat(pzaInsumo.stock) : (parseFloat(itemAfectado.insumo_stock) || 0);
+
+        const serviciosOtrosRenglones = prev
+          .filter((it) => (it.id_unico || it.id) !== idUnico && it.id === itemAfectado.id)
+          .reduce((acc, it) => acc + (parseFloat(it.cantidad) || 0), 0);
+
+        const insumoYaGastado = serviciosOtrosRenglones * parseFloat(itemAfectado.insumo_cantidad);
+        const insumoEsteRenglon = cantCalculada * parseFloat(itemAfectado.insumo_cantidad);
+
+        if (insumoYaGastado + insumoEsteRenglon > stockInsumo) {
+          const insumoDisponible = Math.max(0, stockInsumo - insumoYaGastado);
+          const maxPermitido = Math.floor(insumoDisponible / parseFloat(itemAfectado.insumo_cantidad));
+          alert(`⚠️ Suministros insuficientes. Quedan existencias para ${maxPermitido}x "${itemAfectado.nombre}".`);
+          cantCalculada = maxPermitido;
+        }
       }
 
       return prev.map((item) => {
@@ -649,7 +800,7 @@ export default function PuntoDeVenta() {
 
     setProductoSeleccionado((prev) => {
       if (!prev || (prev.id_unico || prev.id) !== idUnico) return prev;
-      let paso = (prev.aGranel || prev.esServicio) ? 0.5 : 1;
+      let paso = prev.aGranel ? 0.5 : 1;
       let nueva = delta !== 0 ? Math.max(paso, +((parseFloat(prev.cantidad) || 0) + delta * paso).toFixed(3)) : parseFloat(nuevaCantidad);
       return { ...prev, cantidad: isNaN(nueva) ? prev.cantidad : nueva };
     });
@@ -681,16 +832,36 @@ export default function PuntoDeVenta() {
 
   const agregarAlCarrito = (producto, mantenerModalAbierto = false) => {
     const esFisicoInventariado = !producto.esKit && !producto.esServicio && !producto.noInventariado;
+    const esServicioVinculado = producto.esServicio && producto.insumo_producto_id && parseFloat(producto.insumo_cantidad) > 0;
+    const cantAgregar = parseFloat(producto.cantidadAgregar || 1);
 
     if (esFisicoInventariado && parseFloat(producto.stock) <= 0) {
       alert(`⚠️ "${producto.nombre}" no tiene existencias disponibles.`);
       return;
     }
 
+    if (producto.esKit) {
+      const cantYaEnCarro = carrito
+        .filter((it) => (it.id_busqueda || it.id) === (producto.id_busqueda || producto.id))
+        .reduce((acc, it) => acc + (parseFloat(it.cantidad) || 0), 0);
+
+      if (cantYaEnCarro + cantAgregar > (parseFloat(producto.stock) || 0)) {
+        alert(`⚠️ Existencias insuficientes para armar más paquetes de "${producto.nombre}". Disponibles para armar: ${producto.stock} paq(s).`);
+        return;
+      }
+    }
+    
+    if (esServicioVinculado) {
+      const maxPosible = Math.floor((parseFloat(producto.insumo_stock) || 0) / parseFloat(producto.insumo_cantidad));
+      if (maxPosible <= 0) {
+        alert(`⚠️ No tienes suficientes hojas/insumos para realizar "${producto.nombre}".`);
+        return;
+      }
+    }
+
     const precioFinal = parseFloat(producto.precioUnitario) || 0;
     const descuentoFinal = parseFloat(producto.descuento) || 0;
     const comentarioFinal = (producto.comentario || '').trim();
-    const cantAgregar = parseFloat(producto.cantidadAgregar || 1);
 
     if (esFisicoInventariado) {
       const pzaProd = catalogo.find(c => c.id === producto.id && !c.esVentaPaquete);
@@ -707,6 +878,22 @@ export default function PuntoDeVenta() {
         const piezasLibres = Math.max(0, stockPiezasTotal - piezasYaEnCarro);
         const maxPaqLibres = Math.floor(piezasLibres / factorNuevo);
         alert(`⚠️ Inventario insuficiente. Solo quedan ${piezasLibres} piezas disponibles (${maxPaqLibres} paquetes).`);
+        return;
+      }
+    } else if (esServicioVinculado) {
+      const pzaInsumo = catalogo.find(c => c.id === producto.insumo_producto_id && !c.esVentaPaquete);
+      const stockInsumoTotal = pzaInsumo ? parseFloat(pzaInsumo.stock) : (parseFloat(producto.insumo_stock) || 0);
+      
+      const serviciosYaEnCarro = carrito
+        .filter((it) => it.id === producto.id)
+        .reduce((acc, it) => acc + (parseFloat(it.cantidad) || 0), 0);
+        
+      const insumoRequerido = (serviciosYaEnCarro + cantAgregar) * parseFloat(producto.insumo_cantidad);
+      
+      if (insumoRequerido > stockInsumoTotal) {
+        const insumoLibre = Math.max(0, stockInsumoTotal - (serviciosYaEnCarro * parseFloat(producto.insumo_cantidad)));
+        const maxServiciosLibres = Math.floor(insumoLibre / parseFloat(producto.insumo_cantidad));
+        alert(`⚠️ Insumos insuficientes. Solo te alcanzan los suministros para ${maxServiciosLibres}x "${producto.nombre}".`);
         return;
       }
     }
@@ -734,6 +921,7 @@ export default function PuntoDeVenta() {
         const nuevoItem = {
           ...producto,
           id_unico: `${producto.id}_${producto.esVentaPaquete ? 'PKG' : 'PZA'}_${Date.now()}_${Math.random()}`,
+          codigo: producto.codigo || 'S/C',
           precioUnitario: precioFinal,
           descuento: descuentoFinal,
           comentario: comentarioFinal,
@@ -744,6 +932,10 @@ export default function PuntoDeVenta() {
           esVentaPaquete: Boolean(producto.esVentaPaquete),
           aGranel: Boolean(producto.aGranel),
           esServicio: Boolean(producto.esServicio),
+          redondear_granel: Boolean(producto.redondear_granel),
+          tipo_redondeo: producto.tipo_redondeo || 'peso_arriba',
+          insumo_producto_id: producto.insumo_producto_id || null,
+          insumo_cantidad: parseFloat(producto.insumo_cantidad) || 0,
           imagenLocacion: producto.imagenLocacion || ''
         };
         nuevoCarrito.push(nuevoItem);
@@ -837,10 +1029,23 @@ export default function PuntoDeVenta() {
     const dbMax = parseInt(datosEmpresa.max_resultados_busqueda, 10);
     const limit = localMax || dbMax || 8;
 
-    const coincidencias = catalogo.filter((prod) =>
-      prod.nombre.toLowerCase().includes(termino) ||
-      prod.codigo.toLowerCase().includes(termino)
-    ).map((p) => ({
+    const coincidencias = catalogo.filter((prod) => {
+      const coincide = prod.nombre.toLowerCase().includes(termino) || prod.codigo.toLowerCase().includes(termino);
+      if (!coincide) return false;
+      if (!mostrarPaquetes && prod.esVentaPaquete) return false;
+      return true;
+    })
+    .sort((a, b) => {
+      const nombreA = a.nombre.replace(/^📦 \[PAQUETE de \d+ pzs\] |^\[PAQUETE\/KIT\] /i, '').trim();
+      const nombreB = b.nombre.replace(/^📦 \[PAQUETE de \d+ pzs\] |^\[PAQUETE\/KIT\] /i, '').trim();
+
+      const empiezaA = nombreA.toLowerCase().startsWith(termino);
+      const empiezaB = nombreB.toLowerCase().startsWith(termino);
+      if (empiezaA && !empiezaB) return -1;
+      if (!empiezaA && empiezaB) return 1;
+
+      return nombreA.localeCompare(nombreB, 'es', { sensitivity: 'base', numeric: true });
+    }).map((p) => ({
       ...p,
       precioOriginal: p.precioUnitario,
       promocionId: 'PROMO_NINGUNA',
@@ -873,8 +1078,13 @@ export default function PuntoDeVenta() {
 
   const guardarVentaEnEspera = () => {
     if (carrito.length === 0) return alert('El carrito está vacío.');
+    
+    const nombreTicket = window.prompt("Ingresa un nombre o nota para este ticket pendiente:", `Ticket ${ventasEnEspera.length + 1}`);
+    if (nombreTicket === null) return;
+
     const nuevaEspera = {
       id: Date.now(),
+      nombre: nombreTicket.trim() || `Ticket ${ventasEnEspera.length + 1}`,
       hora: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       items: [...carrito],
       total: totalPagar
@@ -882,7 +1092,6 @@ export default function PuntoDeVenta() {
     setVentasEnEspera((prev) => [...prev, nuevaEspera]);
     setCarrito([]);
     setProductoSeleccionado(null);
-    alert('Venta puesta en espera correctamente.');
   };
 
   const recuperarVentaEnEspera = (venta) => {
@@ -890,6 +1099,12 @@ export default function PuntoDeVenta() {
     setProductoSeleccionado(venta.items[0] || null);
     setVentasEnEspera((prev) => prev.filter((v) => v.id !== venta.id));
     setModalActivo(null);
+  };
+
+  const eliminarVentaEnEspera = (id) => {
+    if (window.confirm("¿Seguro que deseas eliminar este ticket pendiente?")) {
+      setVentasEnEspera((prev) => prev.filter((v) => v.id !== id));
+    }
   };
 
   const registrarMovimientoDinero = async (e) => {
@@ -909,7 +1124,7 @@ export default function PuntoDeVenta() {
           tipo,
           monto: montoVal,
           motivo: movimientoMotivo.trim(),
-          cajero: 'Turno 1'
+          cajero: usuarioActivo.nombre
         })
       });
 
@@ -937,17 +1152,20 @@ export default function PuntoDeVenta() {
     const folioGenerado = `VTA-${Date.now().toString().slice(-6)}`;
     const fechaHoraVenta = `${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
 
+    const d = new Date();
+    const pad = (n) => String(n).padStart(2, '0');
+    const fechaHoraLocalActual = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+
     const payloadVenta = {
       folio: folioGenerado,
-      fecha_hora: new Date().toISOString(),
+      fecha_hora: fechaHoraLocalActual,
       total: totalPagar,
       metodo_pago: metodoPago,
-      // AQUÍ ESTÁ EL TRUCO MATEMÁTICO: Si es efectivo, solo mandamos el Total de la cuenta (no el billete que nos dio el cliente).
       monto_efectivo: metodoPago === 'efectivo' ? totalPagar : (metodoPago === 'mixto' ? efectivoNum : 0),
       monto_tarjeta: metodoPago === 'tarjeta' ? totalPagar : (metodoPago === 'mixto' ? tarjetaNum : 0),
       monto_vales: metodoPago === 'vales' ? totalPagar : (metodoPago === 'mixto' ? valesNum : 0),
       monto_codi: metodoPago === 'codi' ? totalPagar : (metodoPago === 'mixto' ? codiNum : 0),
-      cajero: 'Turno 1',
+      cajero: usuarioActivo.nombre,
       items: carrito,
       cliente_id: clienteActivo ? clienteActivo.id : null,
       puntos_ganados: puntosGanadosCompra,
@@ -965,7 +1183,7 @@ export default function PuntoDeVenta() {
         const datosVentaConcluida = {
           folio: folioGenerado,
           fechaHora: fechaHoraVenta,
-          cajero: 'Turno 1',
+          cajero: usuarioActivo.nombre,
           items: [...carrito],
           total: totalPagar,
           efectivo: payloadVenta.monto_efectivo,
@@ -1031,7 +1249,6 @@ export default function PuntoDeVenta() {
     setMostrarModalEditarItem(true);
   };
 
-  // Atajos globales de teclado
   useEffect(() => {
     const manejarTeclas = (event) => {
       const activeTag = document.activeElement?.tagName;
@@ -1101,7 +1318,9 @@ export default function PuntoDeVenta() {
   const cantEnCarro = productoSeleccionado ? (carrito.find(it => (it.id_unico || it.id) === (productoSeleccionado.id_unico || productoSeleccionado.id))?.cantidad || 0) : 0;
   const stockRemanente = +(stockBase - cantEnCarro).toFixed(2);
   const minStock = productoFresco?.invMinimo ?? productoSeleccionado?.invMinimo ?? 0;
+  
   const esFisicoInventariado = productoSeleccionado && !productoSeleccionado.esKit && !productoSeleccionado.esServicio && !productoSeleccionado.noInventariado;
+  const esServicioConInsumo = productoSeleccionado && productoSeleccionado.esServicio && productoSeleccionado.insumo_producto_id;
 
   const itemsNotaImpresion = ventaFinalizada ? ventaFinalizada.items : carrito;
   const folioNotaImpresion = ventaFinalizada ? ventaFinalizada.folio : `VTA-${Date.now().toString().slice(-6)}`;
@@ -1113,7 +1332,6 @@ export default function PuntoDeVenta() {
 
   return (
     <div className="pos-container">
-      {/* ALERTA DISCRETA TIPO TOAST DE STOCK MÍNIMO */}
       {alertaStock && (
         <div className="pos-stock-toast">
           <div className="toast-icon">⚠</div>
@@ -1133,9 +1351,9 @@ export default function PuntoDeVenta() {
           <h2>VENTAS</h2>
         </div>
         <div className="pos-user-info">
-          <span>[Cajero: Turno 1]</span>
+          <span>[{usuarioActivo.rol === 'admin' ? 'Admin' : 'Cajero'}: {usuarioActivo.nombre}]</span>
         </div>
-</header>
+      </header>
 
       {!cajaAbierta ? (
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', backgroundColor: '#ffffff', borderRadius: '8px', border: '1px dashed #cbd5e1', margin: '15px 0' }}>
@@ -1149,230 +1367,318 @@ export default function PuntoDeVenta() {
       ) : (
         <>
           <form className="pos-search-bar" onSubmit={ejecutarBusqueda}>
-        <label htmlFor="search-input">BÚSQUEDA:</label>
-        <div className="pos-search-wrapper" ref={contenedorBusquedaRef}>
-          <input
-            ref={inputBusquedaRef}
-            id="search-input"
-            type="text"
-            value={busqueda}
-            onChange={(e) => setBusqueda(e.target.value)}
-            onKeyDown={manejarKeyDownBusqueda}
-            onFocus={() => {
-              if (sugerencias.length > 0) setMostrarSugerencias(true);
-            }}
-            placeholder="Escribe 'cuaderno', 'celofán' o código..."
-            autoComplete="off"
-            autoFocus
-          />
-
-          {mostrarSugerencias && sugerencias.length > 0 && (
-            <ul 
-              className="pos-autocomplete-list" 
-              id="lista-sugerencias-pos"
-              style={{ maxHeight: `${alturaDropdown}px` }}
-            >
-              <li className="pos-autocomplete-header">
-                <span>Producto / Presentación</span>
-                <span>Precio</span>
-                <span>Inventario</span>
-              </li>
-
-              {sugerencias.map((item, idx) => (
-                <li
-                  id={`sug-pos-${idx}`}
-                  key={item.id_busqueda || item.id}
-                  className={`pos-autocomplete-item ${idx === indiceSeleccionado ? 'active' : ''}`}
-                  onMouseDown={(e) => {
-                    e.preventDefault();
-                    seleccionarSugerencia(item);
+            <label htmlFor="search-input">BÚSQUEDA:</label>
+            <div className="pos-search-wrapper" ref={contenedorBusquedaRef}>
+              <input
+                ref={inputBusquedaRef}
+                id="search-input"
+                type="text"
+                value={busqueda}
+                onChange={(e) => setBusqueda(e.target.value)}
+                onKeyDown={manejarKeyDownBusqueda}
+                onFocus={() => {
+                  if (sugerencias.length > 0) setMostrarSugerencias(true);
                   }}
-                >
-                  <div className="pos-autocomplete-col-info">
-                    <span className="pos-autocomplete-name">
-                      {item.esKit && <span style={{ color: '#2563eb', marginRight: '4px' }}>📦 [Kit]</span>}
-                      {item.esVentaPaquete && <span style={{ color: '#0284c7', marginRight: '4px' }}>📦</span>}
-                      {item.nombre}
-                    </span>
-                    <span className="pos-autocomplete-sub">
-                      Cód: {item.codigo || 'S/N'} | Loc: {item.ubicacion}
-                    </span>
-                  </div>
+                  placeholder="Escribe 'cuaderno', 'celofán' o código..."
+                  autoComplete="off"
+                  autoFocus
+                />
 
-                  <div className="pos-autocomplete-col-price">
-                    ${item.precioUnitario.toFixed(2)}
-                  </div>
-
-                  <div className={`pos-autocomplete-col-stock ${!item.esKit && item.stock <= (item.invMinimo || 5) ? 'stock-low' : ''}`}>
-                    {item.esKit ? 'Paquete' : item.esVentaPaquete ? `${item.stock} paq(s)` : `${item.stock} pz(s)`}
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-        <button type="submit" className="btn-search">🔍</button>
-      </form>
-
-      <div className="pos-body">
-        <div className="pos-left-panel">
-          <div className="pos-table-wrapper">
-            <table className="pos-table">
-              <thead>
-                <tr>
-                  <th style={{ width: '110px' }}>CANT</th>
-                  <th>PRODUCTO / PAQUETE</th>
-                  <th className="col-stock-pos" style={{ width: '70px', textAlign: 'center' }}>STOCK</th>
-                  <th style={{ width: '90px' }}>PRECIO U.</th>
-                  <th style={{ width: '80px' }}>DESC.</th>
-                  <th style={{ width: '100px' }}>TOTAL</th>
-                </tr>
-              </thead>
-              <tbody>
-                {carrito.map((item) => {
-                  const keyItem = item.id_unico || item.id;
-                  const isSelected = (productoSeleccionado?.id_unico || productoSeleccionado?.id) === keyItem;
-                  const cantNum = parseFloat(item.cantidad) || 0;
-                  const totalFila = (item.precioUnitario * cantNum) * (1 - (item.descuento || 0) / 100);
-                  const admiteDecimal = item.aGranel || item.esServicio;
-
-                  return (
-                    <tr
-                      key={keyItem}
-                      className={isSelected ? 'selected-row' : ''}
-                      onClick={() => setProductoSeleccionado(item)}
-                    >
-                      <td onClick={(e) => e.stopPropagation()} onDoubleClick={(e) => e.stopPropagation()}>
-                        <div className="qty-controls-table" onDoubleClick={(e) => e.stopPropagation()}>
-                          <button 
-                            type="button" 
-                            className="btn-qty-mini" 
-                            onClick={(e) => { 
-                              e.stopPropagation(); 
-                              cambiarCantidadTabla(keyItem, null, -1); 
-                            }}
-                          >
-                            -
-                          </button>
-                          <input 
-                            type="number" 
-                            step={admiteDecimal ? "any" : "1"}
-                            className="input-qty-table" 
-                            value={item.cantidad} 
-                            onClick={(e) => e.stopPropagation()} 
-                            onDoubleClick={(e) => e.stopPropagation()}
-                            onChange={(e) => cambiarCantidadTabla(keyItem, e.target.value)} 
-                            min={admiteDecimal ? "0.01" : "1"}
-                          />
-                          <button 
-                            type="button" 
-                            className="btn-qty-mini" 
-                            onClick={(e) => { 
-                              e.stopPropagation(); 
-                              cambiarCantidadTabla(keyItem, null, 1); 
-                            }}
-                          >
-                            +
-                          </button>
+                {mostrarSugerencias && sugerencias.length > 0 && (
+                  <ul
+                    className="pos-autocomplete-list"
+                    id="lista-sugerencias-pos"
+                    style={{ maxHeight: `${alturaDropdown}px` }}
+                  >
+                    <li className="pos-autocomplete-header">
+                      <span>Código</span>
+                      <span>Producto / Presentación</span>
+                      <span>Precio</span>
+                      <span>Inventario</span>
+                    </li>
+                    {sugerencias.map((item, idx) => (
+                      <li
+                        id={`sug-pos-${idx}`}
+                        key={item.id_busqueda || item.id}
+                        className={`pos-autocomplete-item ${idx === indiceSeleccionado ? 'active' : ''}`}
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          seleccionarSugerencia(item);
+                        }}
+                      >
+                        <div className="pos-autocomplete-col-code">
+                          {item.codigo || 'S/C'}
                         </div>
-                      </td>
-
-                      <td onDoubleClick={() => abrirModalEditarItem(item)} title="Doble clic para editar precio, promoción o notas">
-                        <div className="product-table-name">
-                          {item.esKit && <strong style={{ color: '#2563eb' }}>[KIT] </strong>}
-                          {item.esVentaPaquete && <strong style={{ color: '#0284c7' }}>📦 [PAQ. {item.piezasPorPaquete} PZS] </strong>}
-                          {item.nombre}
-                          {item.aGranel && <small style={{ color: '#16a34a', marginLeft: '6px' }}>⚖ [Granel]</small>}
+                        <div className="pos-autocomplete-col-info">
+                          <span className="pos-autocomplete-name">
+                            {item.esKit && <span style={{ color: '#2563eb', marginRight: '4px' }}> [Kit]</span>}
+                            {item.esVentaPaquete && <span style={{ color: '#0284c7', marginRight: '4px' }}> </span>}
+                            {item.nombre}
+                          </span>
+                          {mostrarDetallesProd && (
+                            <span className="pos-autocomplete-sub">
+                              Loc: {item.ubicacion}
+                            </span>
+                          )}
                         </div>
-                        {item.promocionNombre && <span className="product-table-promo">🏷 {item.promocionNombre}</span>}
-                        {item.comentario && <span className="product-table-comment">📝 {item.comentario}</span>}
-                      </td>
-                      <td className="col-stock-pos" style={{ textAlign: 'center', fontWeight: 'bold', color: item.stock <= 0 ? '#dc2626' : '#475569' }} onDoubleClick={() => abrirModalEditarItem(item)} title="Doble clic para editar">
-                        {item.esServicio || item.noInventariado ? '—' : item.stock}
-                      </td>
-                      <td onDoubleClick={() => abrirModalEditarItem(item)} title="Doble clic para editar">${item.precioUnitario.toFixed(2)}</td>
-                      <td onDoubleClick={() => abrirModalEditarItem(item)} title="Doble clic para editar">{item.descuento ? `${item.descuento}%` : '-'}</td>
-                      <td onDoubleClick={() => abrirModalEditarItem(item)} title="Doble clic para editar">${totalFila.toFixed(2)}</td>
-                    </tr>
-                  );
-                })}
-                {carrito.length === 0 && (
-                  <tr><td colSpan="6" className="empty-cart-message">No hay productos agregados a la venta activa</td></tr>
+                        <div className="pos-autocomplete-col-price">
+                          ${item.precioUnitario.toFixed(2)}
+                        </div>
+                        <div className={`pos-autocomplete-col-stock ${item.stock <= (item.invMinimo || 5) && !item.esServicio ? 'stock-low' : ''}`}>
+                          {item.esKit
+                            ? `${item.stock} paq(s)`
+                            : item.esVentaPaquete
+                              ? `${item.stock} paq(s)`
+                              : (item.esServicio && item.insumo_producto_id
+                                ? `${Math.floor((item.insumo_stock || 0) / (item.insumo_cantidad || 1))} max`
+                                : (item.esServicio
+                                  ? ' '
+                                  : item.aGranel
+                                    ? `${item.stock} MT(S)`
+                                    : `${item.stock} pz(s)`))}
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
                 )}
-              </tbody>
-            </table>
-          </div>
-
-          <div className="pos-total-banner">
-            <span>TOTAL A PAGAR:</span>
-            <h2>${totalPagar.toFixed(2)}</h2>
-          </div>
-
-          <div className="pos-quick-actions">
-            <button className="btn-secondary" onClick={() => setModalActivo('entrada')}>Entrada Dinero</button>
-            <button className="btn-secondary" onClick={() => setModalActivo('salida')}>Salida Dinero</button>
-            <button 
-              className="btn-secondary" 
-              style={{ backgroundColor: '#0284c7', color: '#ffffff' }} 
-              onClick={() => setModalActivo('rapido')}
-            >
-              ⚡ Art. No Inventariado
-            </button>
-            <button className="btn-secondary" onClick={iniciarCotizacion}>Cotización</button>
-            <button className="btn-secondary" onClick={() => setModalActivo('espera')}>Venta en Espera {ventasEnEspera.length > 0 && `(${ventasEnEspera.length})`}</button>
-            <button className="btn-secondary" onClick={abrirCerrarTurno}>Cerrar Turno</button>
-          </div>
-        </div>
-
-        <div className="pos-right-panel">
-          <div className="pos-viewer-card">
-            <div className="image-box">
-              {imagenPrincipal ? <img src={imagenPrincipal} alt={productoSeleccionado?.nombre} /> : <span>VISOR DE IMAGEN</span>}
-            </div>
-            
-            <div className="location-tag" style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-              Loc: 
-              {fotoUbicacion ? (
-                <span style={{ color: '#2563eb', cursor: 'pointer', textDecoration: 'underline' }} onClick={() => setImagenVisorFlotante(fotoUbicacion)} title="Ver foto de ubicación">
-                  {ubicacionTexto !== 'N/A' && ubicacionTexto !== '' ? ubicacionTexto : 'Ver Foto'} 📷
-                </span>
-              ) : (
-                <span>{ubicacionTexto}</span>
-              )}
-            </div>
-
-            {/* Distintivo de inventario restante en visor */}
-            {esFisicoInventariado && (
-              <div className={`stock-viewer-badge ${stockRemanente <= 0 ? 'out' : stockRemanente <= minStock ? 'low' : 'ok'}`}>
-                {stockRemanente <= 0 
-                  ? '⚠️ Sin existencias en mostrador' 
-                  : stockRemanente <= minStock 
-                  ? `⚠ Quedan solo ${stockRemanente} ${productoSeleccionado.esVentaPaquete ? 'paq(s)' : 'pz(s)'}` 
-                  : `Disponible: ${stockRemanente} ${productoSeleccionado.esVentaPaquete ? 'paq(s)' : 'pz(s)'}`}
               </div>
-            )}
+            <button type="submit" className="btn-search">🔍</button>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11px', cursor: 'pointer', whiteSpace: 'nowrap', color: '#64748b', fontWeight: 'bold' }}>
+              <input type="checkbox" checked={mostrarPaquetes} onChange={(e) => setMostrarPaquetes(e.target.checked)} style={{ cursor: 'pointer', width: '14px', height: '14px' }} />
+              Ver Paquetes
+            </label>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11px', cursor: 'pointer', whiteSpace: 'nowrap', color: '#64748b', fontWeight: 'bold' }}>
+              <input type="checkbox" checked={mostrarDetallesProd} onChange={(e) => setMostrarDetallesProd(e.target.checked)} style={{ cursor: 'pointer', width: '14px', height: '14px' }} />
+              Ver Info
+            </label>
+          </form>
 
-            <button className="btn-danger-outline" onClick={eliminarSeleccionado} disabled={!productoSeleccionado}>
-              [Eliminar Selecc.] (Supr)
-            </button>
-          </div>
+          <div className="pos-body">
+            <div className="pos-left-panel">
+              <div className="pos-table-wrapper">
+                <table className="pos-table">
+                  <thead>
+                    <tr>
+                      <th style={{ width: '135px' }}>CANT</th>
+                      <th style={{ width: '110px' }}>CÓDIGO</th>
+                      <th>PRODUCTO / PAQUETE</th>
+                      <th style={{ width: '90px' }}>PRECIO U.</th>
+                      <th style={{ width: '80px' }}>DESC.</th>
+                      <th style={{ width: '100px' }}>TOTAL</th>
+                      <th className="col-stock-pos" style={{ width: '70px', textAlign: 'center' }}>STOCK</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                      {carrito.map((item) => {
+                        const keyItem = item.id_unico || item.id;
+                        const isSelected = (productoSeleccionado?.id_unico || productoSeleccionado?.id) === keyItem;
+                        const cantNum = parseFloat(item.cantidad) || 0;
+                        const totalFila = item.aGranel
+                          ? aplicarReglaGranelAsadel(item.precioUnitario, cantNum, item.descuento)
+                          : (item.precioUnitario * cantNum) * (1 - (item.descuento || 0) / 100);
+                        const admiteDecimal = Boolean(item.aGranel);
 
-          <div className="pos-checkout-actions">
-            <button 
-              className="btn-main btn-pay" 
-              onClick={abrirModalCobro} 
-              disabled={carrito.length === 0}
-            > 
-              COBRAR (Esc) 
-            </button>
-            <button className="btn-main btn-hold" onClick={guardarVentaEnEspera} disabled={carrito.length === 0}> TICKET PEND. </button>
+                        const stockRestante = item.noInventariado
+                        ? '—'
+                        : item.esServicio && item.insumo_producto_id
+                        ? Math.max(0, Math.floor(((item.insumo_stock || 0) - (cantNum * (item.insumo_cantidad || 1))) / (item.insumo_cantidad || 1)))
+                        : item.esServicio
+                        ? '—'
+                        : item.esKit
+                        ? Math.max(0, Math.floor(item.stock - cantNum))
+                        : Math.max(0, +(item.stock - cantNum).toFixed(2));
+
+                        return (
+                          <tr
+                            key={keyItem}
+                            className={isSelected ? 'selected-row' : ''}
+                            onClick={() => setProductoSeleccionado(item)}
+                          >
+                            <td onClick={(e) => e.stopPropagation()} onDoubleClick={(e) => e.stopPropagation()}>
+                              <div className="qty-controls-table" onDoubleClick={(e) => e.stopPropagation()}>
+                                <button
+                                  type="button"
+                                  className="btn-qty-mini"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    cambiarCantidadTabla(keyItem, null, -1);
+                                  }}
+                                >
+                                  -
+                                </button>
+                                <input
+                                  type="number"
+                                  step={admiteDecimal ? "any" : "1"}
+                                  className="input-qty-table"
+                                  style={{ width: '58px', textAlign: 'center', padding: '2px 4px', fontWeight: 'bold' }}
+                                  value={item.cantidad}
+                                  onClick={(e) => e.stopPropagation()}
+                                  onDoubleClick={(e) => e.stopPropagation()}
+                                  onChange={(e) => cambiarCantidadTabla(keyItem, e.target.value)}
+                                  min={admiteDecimal ? "0.01" : "1"}
+                                />
+                                <button
+                                  type="button"
+                                  className="btn-qty-mini"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    cambiarCantidadTabla(keyItem, null, 1);
+                                  }}
+                                >
+                                  +
+                                </button>
+                              </div>
+                            </td>
+
+                            <td 
+                              onDoubleClick={() => abrirModalEditarItem(item)} 
+                              title="Doble clic para editar"
+                              style={{ fontFamily: 'monospace', fontWeight: 'bold', color: '#2563eb', fontSize: '12px' }}
+                            >
+                              {item.codigo || 'S/C'}
+                            </td>
+
+                            <td onDoubleClick={() => abrirModalEditarItem(item)} title="Doble clic para editar precio, promoción o notas">
+                              <div className="product-table-name">
+                                {item.esKit && <strong style={{ color: '#2563eb' }}>[KIT] </strong>}
+                                {item.esVentaPaquete && <strong style={{ color: '#0284c7' }}>📦 [PAQ. {item.piezasPorPaquete} PZS] </strong>}
+                                {item.nombre}
+                                {item.aGranel && <small style={{ color: '#16a34a', marginLeft: '6px' }}>⚖ [Granel]</small>}
+                              </div>
+                              {item.promocionNombre && <span className="product-table-promo">🏷 {item.promocionNombre}</span>}
+                              {item.comentario && <span className="product-table-comment">📝 {item.comentario}</span>}
+                            </td>
+
+                            <td onDoubleClick={() => abrirModalEditarItem(item)} title="Doble clic para editar">${item.precioUnitario.toFixed(2)}</td>
+                            <td onDoubleClick={() => abrirModalEditarItem(item)} title="Doble clic para editar">{item.descuento ? `${item.descuento}%` : '-'}</td>
+                            <td onDoubleClick={() => abrirModalEditarItem(item)} title="Doble clic para editar">${totalFila.toFixed(2)}</td>
+                            <td className="col-stock-pos" style={{ textAlign: 'center', fontWeight: 'bold', color: typeof stockRestante === 'number' && stockRestante <= 0 ? '#dc2626' : '#475569' }} onDoubleClick={() => abrirModalEditarItem(item)} title="Doble clic para editar">
+                              {typeof stockRestante === 'number'
+                                ? `${stockRestante} ${item.aGranel ? 'MT(S)' : (item.esVentaPaquete || item.esKit) ? 'paq(s)' : 'pz(s)'}`
+                                : stockRestante}
+                            </td>
+                          </tr>
+                        );
+                    })}
+                    {carrito.length === 0 && (
+                      <tr><td colSpan="7" className="empty-cart-message">No hay productos agregados a la venta activa</td></tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="pos-total-banner">
+                <span>TOTAL A PAGAR:</span>
+                <h2>${totalPagar.toFixed(2)}</h2>
+              </div>
+
+              <div className="pos-quick-actions">
+                <button 
+                  className="btn-pos-action btn-pos-entrada" 
+                  onClick={() => setModalActivo('entrada')}
+                >
+                  💵 Entrada Dinero
+                </button>
+
+                <button 
+                  className="btn-pos-action btn-pos-salida" 
+                  onClick={() => setModalActivo('salida')}
+                >
+                  💸 Salida Dinero
+                </button>
+
+                <button 
+                  className="btn-pos-action btn-pos-rapido" 
+                  onClick={() => setModalActivo('rapido')}
+                >
+                  ⚡ Art. No Inventariado
+                </button>
+
+                <button 
+                  className="btn-pos-action btn-pos-cotizacion" 
+                  onClick={iniciarCotizacion}
+                >
+                  📄 Cotización
+                </button>
+
+                <button 
+                  className="btn-pos-action btn-pos-espera" 
+                  onClick={() => setModalActivo('espera')}
+                >
+                  ⏳ Venta en Espera {ventasEnEspera.length > 0 && `(${ventasEnEspera.length})`}
+                </button>
+
+                <button 
+                  className="btn-pos-action btn-pos-turno" 
+                  onClick={abrirCerrarTurno}
+                >
+                  🔒 Cerrar Turno
+                </button>
+              </div>
+            </div>
+
+            <div className="pos-right-panel">
+              <div className="pos-viewer-card">
+                <div className="image-box">
+                  {imagenPrincipal ? <img src={imagenPrincipal} alt={productoSeleccionado?.nombre} /> : <span>VISOR DE IMAGEN</span>}
+                </div>
+                
+                <div className="location-tag" style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                  Loc: 
+                  {fotoUbicacion ? (
+                    <span style={{ color: '#2563eb', cursor: 'pointer', textDecoration: 'underline' }} onClick={() => setImagenVisorFlotante(fotoUbicacion)} title="Ver foto de ubicación">
+                      {ubicacionTexto !== 'N/A' && ubicacionTexto !== '' ? ubicacionTexto : 'Ver Foto'} 📷
+                    </span>
+                  ) : (
+                    <span>{ubicacionTexto}</span>
+                  )}
+                </div>
+                {(esFisicoInventariado || productoSeleccionado?.esKit) && (
+                  <div className={`stock-viewer-badge ${stockRemanente <= 0 ? 'out' : stockRemanente <= minStock ? 'low' : 'ok'}`}>
+                    {stockRemanente <= 0
+                      ? '⚠️ Sin existencias en mostrador'
+                      : stockRemanente <= minStock
+                        ? `⚠️ Quedan solo ${stockRemanente} ${productoSeleccionado.aGranel ? 'MT(S)' : (productoSeleccionado.esVentaPaquete || productoSeleccionado.esKit) ? 'paq(s)' : 'pz(s)'}`
+                        : `Disponible: ${stockRemanente} ${productoSeleccionado.aGranel ? 'MT(S)' : (productoSeleccionado.esVentaPaquete || productoSeleccionado.esKit) ? 'paq(s)' : 'pz(s)'}`}
+                  </div>
+                )}
+                
+                {esServicioConInsumo && (
+                  <div className={`stock-viewer-badge ${Math.floor((productoSeleccionado.insumo_stock || 0) / (productoSeleccionado.insumo_cantidad || 1)) <= 0 ? 'out' : 'ok'}`} style={{ fontSize: '10px' }}>
+                    {Math.floor((productoSeleccionado.insumo_stock || 0) / (productoSeleccionado.insumo_cantidad || 1)) <= 0 
+                      ? '⚠️ Insumos agotados' 
+                      : `Máx ${Math.floor((productoSeleccionado.insumo_stock || 0) / (productoSeleccionado.insumo_cantidad || 1))} copias`}
+                  </div>
+                )}
+
+                <button className="btn-danger-outline" onClick={eliminarSeleccionado} disabled={!productoSeleccionado}>
+                  [Eliminar Selecc.] (Supr)
+                </button>
+              </div>
+
+              <div className="pos-checkout-actions">
+                <button 
+                  className="btn-main btn-pay" 
+                  onClick={abrirModalCobro} 
+                  disabled={carrito.length === 0}
+                > 
+                  COBRAR (Esc) 
+                </button>
+                <button 
+                  className="btn-main btn-hold" 
+                  style={{ marginTop: '8px' }} 
+                  onClick={guardarVentaEnEspera} 
+                  disabled={carrito.length === 0}
+                > 
+                  TICKET PENDIENTE 
+                </button>
+              </div>
+            </div>
           </div>
-        </div>
-</div>
         </>
       )}
 
-      {/* MODAL ARTÍCULO NO INVENTARIADO / VENTA RÁPIDA */}
+      {/* MODAL ARTÍCULO NO INVENTARIADO */}
       {modalActivo === 'rapido' && (
         <div className="modal-overlay">
           <div className="modal-content" style={{ width: '420px' }}>
@@ -1433,7 +1739,7 @@ export default function PuntoDeVenta() {
         </div>
       )}
 
-      {/* MODAL DE COBRO (Esc) CON PESTAÑAS Y CANJE DINÁMICO */}
+      {/* MODAL DE COBRO */}
       {mostrarModalCobro && (
         <div className="modal-overlay">
           <div className="modal-content" style={{ width: '520px' }}>
@@ -1442,7 +1748,6 @@ export default function PuntoDeVenta() {
               <button className="btn-close-modal" onClick={() => setMostrarModalCobro(false)}>✕</button>
             </div>
             <form onSubmit={procesarVenta} className="modal-body">
-              
               <div className="modal-total-box">
                 <span>TOTAL A COBRAR</span>
                 <h1>${totalPagar.toFixed(2)} MXN</h1>
@@ -1453,7 +1758,6 @@ export default function PuntoDeVenta() {
                 )}
               </div>
 
-              {/* SECCIÓN CLIENTE / MONEDERO DE PUNTOS */}
               <div className="customer-loyalty-box">
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <label style={{ fontSize: '12px', fontWeight: 'bold', color: '#475569' }}>
@@ -1566,7 +1870,6 @@ export default function PuntoDeVenta() {
                 </div>
               </div>
 
-              {/* TABS DE MÉTODOS DE PAGO */}
               <div className="payment-method-selector">
                 <button type="button" className={`pay-tab ${metodoPago === 'efectivo' ? 'active' : ''}`} onClick={() => { setMetodoPago('efectivo'); setMontoEfectivo(totalPagar.toString()); setTimeout(() => inputMontoEfectivoRef.current?.select(), 50); }}>💵 Efectivo</button>
                 <button type="button" className={`pay-tab ${metodoPago === 'tarjeta' ? 'active' : ''}`} onClick={() => setMetodoPago('tarjeta')}>💳 Tarjeta</button>
@@ -1575,7 +1878,6 @@ export default function PuntoDeVenta() {
                 <button type="button" className={`pay-tab ${metodoPago === 'mixto' ? 'active' : ''}`} onClick={() => { setMetodoPago('mixto'); setMontoEfectivo(''); }}>🔀 Mixto</button>
               </div>
 
-              {/* CAMPOS DE FORMA DE PAGO */}
               <div className="payment-fields">
                 {metodoPago === 'efectivo' && (
                   <div className="field-group">
@@ -1645,13 +1947,12 @@ export default function PuntoDeVenta() {
         </div>
       )}
 
-      {/* MODAL DE NOTA DE VENTA TAMAÑO CARTA CON DATOS DINÁMICOS */}
+      {/* MODAL NOTA DE VENTA */}
       {modalActivo === 'ticket' && (
         <div className="modal-overlay">
           <div className="modal-content modal-cotizacion-content">
             <div className="modal-header">
               <h2>NOTA DE VENTA / REMISIÓN</h2>
-              {/* Cámbialo para que quede así: */}
               <button className="btn-close-modal" onClick={() => { setModalActivo(null); setVentaFinalizada(null); setTimeout(() => inputBusquedaRef.current?.focus(), 100); }}>✕</button>
             </div>
             
@@ -1675,7 +1976,7 @@ export default function PuntoDeVenta() {
                     <strong>NOTA DE VENTA</strong><br />
                     <span><strong>Folio:</strong> {folioNotaImpresion}</span><br />
                     <span><strong>Fecha:</strong> {fechaNotaImpresion}</span><br />
-                    <span><strong>Atendido por:</strong> Turno 1</span>
+                    <span><strong>Atendido por:</strong> {usuarioActivo.nombre}</span>
                     {ventaFinalizada?.cliente && (
                       <><br /><span><strong>Cliente:</strong> {ventaFinalizada.cliente}</span></>
                     )}
@@ -1812,7 +2113,7 @@ export default function PuntoDeVenta() {
                 <div className="nota-carta-datos-folio">
                   <strong>{corteGuardado ? corteGuardado.folio : 'PRE-CORTE'}</strong><br />
                   <span>{new Date().toLocaleDateString()} {new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span><br />
-                  <span>Cajero: Turno 1</span>
+                  <span>Cajero: {usuarioActivo.nombre}</span>
                 </div>
               </div>
 
@@ -1874,7 +2175,7 @@ export default function PuntoDeVenta() {
                         ? '✅ La caja está cuadrada'
                         : (parseFloat(dineroContado) - datosCorte.saldoEsperado) > 0
                         ? '🔼 Sobrante en caja:'
-                        : '⚠ Faltante en caja:'}
+                        : '⚠️ Faltante en caja:'}
                     </span>
                     <strong>${Math.abs(parseFloat(dineroContado) - datosCorte.saldoEsperado).toFixed(2)} MXN</strong>
                   </div>
@@ -2035,7 +2336,7 @@ export default function PuntoDeVenta() {
                 <label>Cantidad:</label>
                 <input 
                   type="number" 
-                  step={(itemEditando.aGranel || itemEditando.esServicio) ? "any" : "1"}
+                  step={itemEditando.aGranel ? "any" : "1"}
                   min="0.01" 
                   value={itemEditando.cantidad} 
                   onChange={(e) => setItemEditando({ ...itemEditando, cantidad: parseFloat(e.target.value) || 1 })} 
@@ -2103,6 +2404,7 @@ export default function PuntoDeVenta() {
         </div>
       )}
 
+      {/* MODAL RESULTADOS DE BÚSQUEDA */}
       {mostrarModalBusqueda && (
         <div className="modal-overlay">
           <div className="modal-content modal-search-results">
@@ -2126,7 +2428,7 @@ export default function PuntoDeVenta() {
                           <label>Cant:</label>
                           <input 
                             type="number" 
-                            step={(prod.aGranel || prod.esServicio) ? "any" : "1"}
+                            step={prod.aGranel ? "any" : "1"}
                             min="0.01" 
                             value={prod.cantidadAgregar || 1} 
                             onChange={(e) => manejarCambioResultado(prod.id, 'cantidadAgregar', e.target.value)} 
@@ -2218,12 +2520,21 @@ export default function PuntoDeVenta() {
               <h2>VENTAS EN ESPERA ({ventasEnEspera.length})</h2>
               <button className="btn-close-modal" onClick={() => setModalActivo(null)}>✕</button>
             </div>
-            <div className="modal-body">
+            <div className="modal-body" style={{ maxHeight: '400px', overflowY: 'auto' }}>
               {ventasEnEspera.length === 0 ? (<p>No hay ventas guardadas en espera.</p>) : (
                 ventasEnEspera.map((v) => (
-                  <div key={v.id} className="espera-item-card">
-                    <div><strong>Hora: {v.hora}</strong> — {v.items.length} productos<div>Total: <strong>${v.total.toFixed(2)}</strong></div></div>
-                    <button className="btn-confirm-modal" onClick={() => recuperarVentaEnEspera(v)}>Recuperar</button>
+                  <div key={v.id} className="espera-item-card" style={{ display: 'flex', flexDirection: 'column', gap: '8px', padding: '12px', border: '1px solid #cbd5e1', borderRadius: '6px', marginBottom: '10px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                      <div>
+                        <strong style={{ fontSize: '15px', color: '#0f172a' }}>{v.nombre}</strong>
+                        <div style={{ fontSize: '12px', color: '#64748b' }}>Hora: {v.hora} — {v.items.length} productos</div>
+                        <div style={{ fontSize: '14px', color: '#16a34a', fontWeight: 'bold', marginTop: '4px' }}>Total: ${v.total.toFixed(2)}</div>
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                        <button className="btn-confirm-modal" style={{ padding: '6px 12px', fontSize: '12px' }} onClick={() => recuperarVentaEnEspera(v)}>Recuperar</button>
+                        <button className="btn-cancel-modal" style={{ padding: '6px 12px', fontSize: '12px', color: '#dc2626', borderColor: '#fca5a5', backgroundColor: '#fef2f2' }} onClick={() => eliminarVentaEnEspera(v.id)}>Eliminar</button>
+                      </div>
+                    </div>
                   </div>
                 ))
               )}
@@ -2232,13 +2543,12 @@ export default function PuntoDeVenta() {
         </div>
       )}
 
-{/* MODAL DE APERTURA DE CAJA (OBLIGATORIO AL INICIO) */}
+      {/* APERTURA DE CAJA */}
       {modalApertura && (
         <div className="modal-overlay" style={{ zIndex: 9999 }}>
           <div className="modal-content" style={{ width: '400px' }}>
             <div className="modal-header">
               <h2>🌅 APERTURA DE CAJA</h2>
-              {/* NUEVO: Botón de la X para cerrar */}
               <button type="button" className="btn-close-modal" onClick={() => setModalApertura(false)}>✕</button>
             </div>
             <form onSubmit={registrarApertura} className="modal-body">
@@ -2259,7 +2569,6 @@ export default function PuntoDeVenta() {
                 />
               </div>
               <div className="modal-footer" style={{ marginTop: '10px' }}>
-                {/* NUEVO: Botón de Cancelar */}
                 <button type="button" className="btn-cancel-modal" onClick={() => setModalApertura(false)}>Cancelar</button>
                 <button type="submit" className="btn-confirm-modal">
                   Abrir Caja y Comenzar Turno
@@ -2270,8 +2579,79 @@ export default function PuntoDeVenta() {
         </div>
       )}
 
-    </div>
+      {/* MODAL CIERRE DE CAJA PENDIENTE (DÍA ANTERIOR) */}
+      {modalCierrePendiente && cierrePendienteData && (
+        <div className="modal-overlay" style={{ zIndex: 10000, backgroundColor: 'rgba(15, 23, 42, 0.85)' }}>
+          <div className="modal-content" style={{ width: '460px', borderTop: '6px solid #f59e0b' }}>
+            <div className="modal-header">
+              <h2 style={{ color: '#b45309', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                ⚠️ CIERRE PENDIENTE ({cierrePendienteData.fechaPendiente})
+              </h2>
+            </div>
+            <form onSubmit={guardarCierrePendiente} className="modal-body">
+              <p style={{ margin: 0, fontSize: '13px', color: '#475569' }}>
+                El sistema detectó que <strong>no se realizó el Cierre Z</strong> al finalizar la jornada del día <strong>{cierrePendienteData.fechaPendiente}</strong>.
+              </p>
 
-    
+              <div style={{ margin: '12px 0', padding: '12px', backgroundColor: '#fef3c7', borderRadius: '6px', border: '1px solid #fde68a' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', marginBottom: '4px' }}>
+                  <span>Ventas registradas ({cierrePendienteData.totalTickets} tickets):</span>
+                  <strong>${cierrePendienteData.ventasDia.toFixed(2)}</strong>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', marginBottom: '4px' }}>
+                  <span>Efectivo esperado:</span>
+                  <strong style={{ color: '#0284c7' }}>${cierrePendienteData.efectivoEsperado.toFixed(2)}</strong>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px' }}>
+                  <span>Ganancia estimada (53%):</span>
+                  <strong style={{ color: '#16a34a' }}>${cierrePendienteData.gananciaEstimada.toFixed(2)}</strong>
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                <div className="field-group">
+                  <label>Billetes contados ($):</label>
+                  <input
+                    type="number"
+                    step="0.5"
+                    min="0"
+                    required
+                    placeholder="0.00"
+                    value={billetesPendiente}
+                    onChange={(e) => setBilletesPendiente(e.target.value)}
+                    autoFocus
+                  />
+                </div>
+                <div className="field-group">
+                  <label>Morralla contada ($):</label>
+                  <input
+                    type="number"
+                    step="0.5"
+                    min="0"
+                    required
+                    placeholder="0.00"
+                    value={morrallaPendiente}
+                    onChange={(e) => setMorrallaPendiente(e.target.value)}
+                  />
+                </div>
+              </div>
+
+              <div style={{ marginTop: '10px', padding: '10px', backgroundColor: '#f1f5f9', borderRadius: '6px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: '13px', fontWeight: 'bold' }}>Total Físico en Caja:</span>
+                <strong style={{ fontSize: '17px', color: '#16a34a' }}>
+                  ${((parseFloat(billetesPendiente) || 0) + (parseFloat(morrallaPendiente) || 0)).toFixed(2)} MXN
+                </strong>
+              </div>
+
+              <div className="modal-footer" style={{ marginTop: '14px' }}>
+                <button type="submit" className="btn-confirm-modal" style={{ width: '100%', height: '42px', backgroundColor: '#d97706' }}>
+                  Confirmar y Guardar Cierre de {cierrePendienteData.fechaPendiente}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }

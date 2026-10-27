@@ -4,21 +4,23 @@
 .gp-container {
   background-color: #f8f9fa;
   color: #212529;
-  min-height: 100vh;
-  padding: 15px;
+  height: 100vh;
+  padding: 6px 10px; /* Reducido de 15px a 6px */
   font-family: Arial, sans-serif;
   box-sizing: border-box;
-  /* AGREGA ESTA LÍNEA PARA PERMITIR EL SCROLL INTERNO: */
-  overflow-y: auto; 
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 
 .gp-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  border-bottom: 2px solid #dee2e6;
-  padding-bottom: 10px;
-  margin-bottom: 15px;
+  border-bottom: 1px solid #dee2e6;
+  padding-bottom: 5px; /* Reducido de 10px a 5px */
+  margin-bottom: 6px; /* Reducido de 15px a 6px */
+  flex-shrink: 0;
 }
 
 .gp-branding {
@@ -52,9 +54,9 @@
 .gp-tab-nav-btn {
   border: none;
   background: none;
-  padding: 8px 16px;
+  padding: 5px 12px; /* Reducido de 8px 16px a 5px 12px */
   font-weight: 700;
-  font-size: 13px;
+  font-size: 12px;
   color: #64748b;
   border-radius: 6px;
   cursor: pointer;
@@ -145,21 +147,25 @@
 }
 
 /* --- VISTA DE CATÁLOGO --- */
+/* --- VISTA DE CATÁLOGO --- */
 .gp-catalogo-view {
   display: flex;
   flex-direction: column;
-  gap: 15px;
+  gap: 6px; /* Reducido de 15px a 6px */
   background-color: #ffffff;
-  padding: 20px;
+  padding: 8px 12px; /* Reducido de 20px a 8px */
   border-radius: 8px;
   border: 1px solid #e0e0e0;
-  box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+  flex: 1;
+  overflow: hidden;
 }
 
 .gp-filter-bar {
   display: flex;
-  gap: 15px;
+  gap: 10px;
   align-items: center;
+  flex-shrink: 0;
 }
 
 .filter-group {
@@ -172,19 +178,28 @@
 }
 
 .filter-group input, .filter-group select {
-  padding: 8px 12px;
+  padding: 5px 10px; /* Reducido de 8px 12px */
   border: 1px solid #ced4da;
   border-radius: 4px;
-  font-size: 0.9rem;
+  font-size: 0.85rem;
+  height: 32px;
+  box-sizing: border-box;
 }
 
+/* --- TABLA CON SCROLL INTERNO --- */
 .gp-table-container {
   overflow-x: auto;
+  overflow-y: auto; /* NUEVO: Scroll vertical solo aquí */
+  flex: 1; /* NUEVO: Se estira todo lo posible */
+  min-height: 0; /* NUEVO: Evita que rompa el contenedor de flexbox */
+  border: 1px solid #e9ecef;
+  border-radius: 6px;
 }
 
 .gp-table {
   width: 100%;
-  border-collapse: collapse;
+  border-collapse: separate; /* Cambiado para usar sticky con bordes */
+  border-spacing: 0;
   text-align: left;
   font-size: 0.9rem;
 }
@@ -196,9 +211,13 @@
 }
 
 .gp-table th {
-  background-color: #f1f3f5;
+  background-color: #f8fafc;
   color: #495057;
   font-weight: bold;
+  position: sticky; /* NUEVO: Títulos pegajosos */
+  top: 0;
+  z-index: 10;
+  border-bottom: 2px solid #e2e8f0;
 }
 
 /* Agregamos transición suave y el efecto hover estilo Ventas */
@@ -226,8 +245,8 @@
 .thumb-img {
   width: 40px;
   height: 40px;
-  object-fit: contain; /* <-- Cambiado para que no recorte la foto */
-  background-color: #ffffff; /* <-- Fondo blanco por si la foto no es cuadrada */
+  object-fit: contain;
+  background-color: #ffffff;
   border-radius: 4px;
   border: 1px solid #dee2e6;
 }
@@ -303,6 +322,8 @@
   border-radius: 8px;
   border: 1px solid #e0e0e0;
   box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+  flex: 1; /* Permitir que ocupe espacio y scrollee */
+  overflow-y: auto;
 }
 
 .gp-left-col {
@@ -628,29 +649,30 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding-top: 15px;
+  padding-top: 5px; /* Reducido de 15px a 5px */
+  padding-bottom: 2px;
   border-top: 1px solid #e9ecef;
-  margin-top: 10px;
+  flex-shrink: 0;
 }
 
 .pagination-info {
-  font-size: 0.85rem;
-  color: #6c757d;
+  font-size: 0.78rem;
+  color: #64748b;
 }
 
 .pagination-controls {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
 }
 
 .btn-page {
   background-color: #ffffff;
   border: 1px solid #ced4da;
   color: #0d6efd;
-  padding: 6px 12px;
+  padding: 3px 8px; /* Reducido de 6px 12px a 3px 8px */
   border-radius: 4px;
-  font-size: 0.85rem;
+  font-size: 0.78rem;
   font-weight: 600;
   cursor: pointer;
   transition: all 0.2s;
@@ -910,35 +932,37 @@
   border-bottom: none;
 }
 
+
 /* =========================================================
    ESTADÍSTICAS DE INVENTARIO (TOTALES DINÁMICOS)
    ========================================================= */
 .gp-inventory-stats {
   display: flex;
-  gap: 15px;
-  margin-top: 15px;
-  margin-bottom: 15px;
+  gap: 8px;
+  margin-top: 1px;
+  margin-bottom: 3px;
+  flex-shrink: 0;
 }
 
 .stat-card {
   flex: 1;
   background-color: #ffffff;
   border: 1px solid #cbd5e1;
-  border-radius: 8px;
-  padding: 14px 20px;
+  border-radius: 6px;
+  padding: 4px 12px; /* Reducido a 4px vertical */
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
-  border-left: 5px solid #cbd5e1; /* Color base por si acaso */
+  gap: 1px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+  border-left: 4px solid #cbd5e1;
 }
 
-.stat-card:nth-child(1) { border-left-color: #0f172a; } /* Costo (Negro/Gris Oscuro) */
-.stat-card:nth-child(2) { border-left-color: #0284c7; } /* Ventas (Azul) */
-.stat-card:nth-child(3) { border-left-color: #16a34a; } /* Ganancia (Verde) */
+.stat-card:nth-child(1) { border-left-color: #0f172a; }
+.stat-card:nth-child(2) { border-left-color: #0284c7; }
+.stat-card:nth-child(3) { border-left-color: #16a34a; }
 
 .stat-card span {
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 800;
   color: #64748b;
   text-transform: uppercase;
@@ -946,7 +970,7 @@
 }
 
 .stat-card strong {
-  font-size: 22px;
+  font-size: 16px; /* Reducido de 20px a 16px */
   font-weight: 800;
 }
 

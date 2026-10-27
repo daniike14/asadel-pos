@@ -3,10 +3,9 @@ import logoDefault from '../assets/Logo.jpg';
 import './GestionProductos.css';
 import { API_URL } from '../config';
 
-const fechaHoyLocal = () => new Date().toISOString().split('T')[0];
+const fechaHoyLocal = () => new Date().getFullYear() + '-' + String(new Date().getMonth() + 1).padStart(2, '0') + '-' + String(new Date().getDate()).padStart(2, '0');
 const generarCodigoKitAutomatico = () => `KIT-${Date.now().toString().slice(-5)}`;
 
-// Función mágica para poner en mayúscula la primera letra de cada palabra
 const formatoTitulo = (texto) => {
     if (!texto) return '';
     return texto.toLowerCase().replace(/(?:^|\s)\w/g, (letra) => letra.toUpperCase());
@@ -34,7 +33,11 @@ const estadoInicialForm = {
     invMinimo: '',
     invActual: '',
     puntosLealtad: '',
-    fechaCompra: fechaHoyLocal()
+    fechaCompra: fechaHoyLocal(),
+    insumo_producto_id: '',
+    insumo_cantidad: '1',
+    redondear_granel: false, // <--- LÍNEA NUEVA
+    tipo_redondeo: 'peso_arriba' // <--- LÍNEA NUEVA
 };
 
 const estadoInicialOpciones = {
@@ -46,6 +49,7 @@ export default function GestionProductos() {
     const busquedaInputRef = useRef(null);
     const fileInputRef = useRef(null);
     const kitBuscadorRef = useRef(null);
+    const menuColumnasRef = useRef(null);
 
     const [vista, setVista] = useState('catalogo');
     const [logoEmpresa, setLogoEmpresa] = useState(logoDefault);
@@ -58,7 +62,7 @@ export default function GestionProductos() {
         };
         window.addEventListener('empresa-actualizada', escucharCambioEmpresa);
         return () => window.removeEventListener('empresa-actualizada', escucharCambioEmpresa);
-    }, []); // 'catalogo' | 'formulario' | 'promociones' | 'kits' | 'gestion_catalogos'
+    }, []);
     const [pestanaActiva, setPestanaActiva] = useState('generales');
 
     const [departamentos, setDepartamentos] = useState([]);
@@ -68,27 +72,23 @@ export default function GestionProductos() {
     const [promociones, setPromociones] = useState([]);
     const [kits, setKits] = useState([]);
 
-    // Subpestañas para Gestión de Catálogos (Deptos, Cats, Provs)
     const [subvistaCatalogo, setSubvistaCatalogo] = useState('departamentos');
-    const [modalEditCatalog, setModalEditCatalog] = useState(null); // { tipo: 'departamento'|'categoria'|'proveedor', item: obj }
+    const [modalEditCatalog, setModalEditCatalog] = useState(null);
     const [editNombre, setEditNombre] = useState('');
     const [editTelefono, setEditTelefono] = useState('');
     const [editContacto, setEditContacto] = useState('');
 
-    // Formulario de Promociones
     const [nuevaPromoNombre, setNuevaPromoNombre] = useState('');
     const [nuevaPromoTipo, setNuevaPromoTipo] = useState('porcentaje');
     const [nuevaPromoValor, setNuevaPromoValor] = useState('');
 
-    // Formulario y Búsqueda de Kits
-    const [kitEditandoId, setKitEditandoId] = useState(null); // NUEVO ESTADO PARA SABER SI ESTAMOS EDITANDO
-    const [busquedaKitsTabla, setBusquedaKitsTabla] = useState(''); // NUEVO ESTADO PARA BUSCAR KITS
+    const [kitEditandoId, setKitEditandoId] = useState(null);
+    const [busquedaKitsTabla, setBusquedaKitsTabla] = useState('');
     const [nuevoKitCodigo, setNuevoKitCodigo] = useState(generarCodigoKitAutomatico());
     const [nuevoKitNombre, setNuevoKitNombre] = useState('');
     const [nuevoKitPrecio, setNuevoKitPrecio] = useState('');
     const [kitComponentes, setKitComponentes] = useState([]);
 
-    // Buscador predictivo para componentes de Kits
     const [busquedaProductoKit, setBusquedaProductoKit] = useState('');
     const [sugerenciasKit, setSugerenciasKit] = useState([]);
     const [mostrarSugerenciasKit, setMostrarSugerenciasKit] = useState(false);
@@ -99,26 +99,46 @@ export default function GestionProductos() {
     const [filtroDepto, setFiltroDepto] = useState('');
     const [cargando, setCargando] = useState(false);
 
+    const [busquedaInsumo, setBusquedaInsumo] = useState('');
+
     const [imagenAmpliada, setImagenAmpliada] = useState(null);
     const [mostrarMenuColumnas, setMostrarMenuColumnas] = useState(false);
-    const [columnasVisibles, setColumnasVisibles] = useState({
-        img: true,
-        codigo: true,
-        nombre: true,
-        departamento: true,
-        categoria: true,
-        proveedor: true,
-        costo: true,
-        precio: true,
-        stock: true,
-        estado: true,
-        acciones: true
+
+    const [columnasVisibles, setColumnasVisibles] = useState(() => {
+        const columnasGuardadas = localStorage.getItem('asadel_columnas_productos');
+        return columnasGuardadas ? JSON.parse(columnasGuardadas) : {
+            img: true, codigo: true, nombre: true, departamento: true,
+            categoria: true, proveedor: true, costo: true, precio: true,
+            stock: true, estado: true, acciones: true
+        };
     });
+
+    useEffect(() => {
+        localStorage.setItem('asadel_columnas_productos', JSON.stringify(columnasVisibles));
+    }, [columnasVisibles]);
+
+    useEffect(() => {
+        const handleClickAfueraColumnas = (e) => {
+            if (menuColumnasRef.current && !menuColumnasRef.current.contains(e.target)) {
+                setMostrarMenuColumnas(false);
+            }
+        };
+        document.addEventListener('mousedown', handleClickAfueraColumnas);
+        return () => document.removeEventListener('mousedown', handleClickAfueraColumnas);
+    }, []);
 
     const [ordenColumna, setOrdenColumna] = useState('nombre'); 
     const [ordenDireccion, setOrdenDireccion] = useState('asc'); 
     const [paginaActual, setPaginaActual] = useState(1);
-    const [itemsPorPagina, setItemsPorPagina] = useState(10);
+    const [itemsPorPagina, setItemsPorPagina] = useState(() => {
+        const guardado = localStorage.getItem('asadel_items_por_pagina_prod');
+        return guardado ? Number(guardado) : 10;
+    });
+
+    useEffect(() => {
+        localStorage.setItem('asadel_items_por_pagina_prod', itemsPorPagina.toString());
+        setPaginaActual(1);
+    }, [itemsPorPagina]);
 
     const [opciones, setOpciones] = useState(estadoInicialOpciones);
     const [datosForm, setDatosForm] = useState(estadoInicialForm);
@@ -147,12 +167,10 @@ export default function GestionProductos() {
             setTimeout(() => busquedaInputRef.current?.focus(), 50);
         }
 
-        // MAGIA: Listener global para regresar el focus si el usuario empieza a teclear
         const manejarTecladoGlobal = (e) => {
             const tagActivo = document.activeElement?.tagName;
             const estaEnInput = tagActivo === 'INPUT' || tagActivo === 'TEXTAREA' || tagActivo === 'SELECT';
 
-            // Si estamos en el catálogo, NO está adentro de una ventana de edición, y presiona una letra/número normal
             if (vista === 'catalogo' && !estaEnInput && e.key.length === 1) {
                 if (busquedaInputRef.current) {
                     busquedaInputRef.current.focus();
@@ -164,7 +182,6 @@ export default function GestionProductos() {
         return () => window.removeEventListener('keydown', manejarTecladoGlobal);
     }, [vista]);
 
-    // Filtrado de sugerencias de componentes de kit
     useEffect(() => {
         const termino = busquedaProductoKit.trim().toLowerCase();
         if (termino.length >= 1) {
@@ -266,7 +283,7 @@ export default function GestionProductos() {
             if (nuevoEstado.esServicio) {
                 setDatosForm((f) => ({ ...f, invActual: '0', invMinimo: '0', claveUnidad: 'E48', locacion: '', imagenLocacion: '' }));
             } else if (estabaActiva && key === 'esServicio') {
-                setDatosForm((f) => ({ ...f, claveUnidad: 'PZA' }));
+                setDatosForm((f) => ({ ...f, claveUnidad: 'PZA', insumo_producto_id: '', insumo_cantidad: '1' }));
             }
 
             if (nuevoEstado.aGranel && (datosForm.claveUnidad === 'PZA' || !datosForm.claveUnidad)) {
@@ -277,7 +294,6 @@ export default function GestionProductos() {
         });
     };
 
-    // Funciones del Kit
     const seleccionarProductoKit = (itemOpcion) => {
         setProductoSeleccionadoKit(itemOpcion);
         setBusquedaProductoKit(itemOpcion.nombre_mostrar);
@@ -321,7 +337,6 @@ export default function GestionProductos() {
         setKitComponentes(kitComponentes.filter((it) => it.producto_id !== productoId));
     };
 
-    // Función que carga los datos de un kit existente al formulario para Editarlo
     const handleEditarKit = (kit) => {
         setKitEditandoId(kit.id);
         setNuevoKitCodigo(kit.codigo);
@@ -336,7 +351,7 @@ export default function GestionProductos() {
         }));
         
         setKitComponentes(componentesEdit);
-        window.scrollTo({ top: 0, behavior: 'smooth' }); // Te sube la pantalla al form
+        window.scrollTo({ top: 0, behavior: 'smooth' });
     };
 
     const cancelarEdicionKit = () => {
@@ -406,13 +421,11 @@ export default function GestionProductos() {
         0
     );
 
-    // Filtrado del buscador de Kits Registrados
     const kitsFiltrados = kits.filter(k => 
         k.nombre.toLowerCase().includes(busquedaKitsTabla.toLowerCase()) || 
         k.codigo.toLowerCase().includes(busquedaKitsTabla.toLowerCase())
     );
 
-    // Funciones de Gestión de Catálogos (Editar/Eliminar Deptos, Cats, Provs)
     const abrirModalEditarCat = (tipo, item) => {
         setModalEditCatalog({ tipo, item });
         setEditNombre(item.nombre || '');
@@ -479,7 +492,6 @@ export default function GestionProductos() {
         }
     };
 
-    // Historial de compras
     const abrirHistorialCostos = async (prod) => {
         setProductoHistorial(prod);
         setDatosNuevaCompra({
@@ -590,7 +602,7 @@ export default function GestionProductos() {
         const url = URL.createObjectURL(blob);
         const link = document.createElement('a');
         link.href = url;
-        link.setAttribute('download', `catalogo_productos_${new Date().toISOString().split('T')[0]}.csv`);
+        link.setAttribute('download', `catalogo_productos_${fechaHoyLocal()}.csv`);
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
@@ -698,7 +710,11 @@ export default function GestionProductos() {
             invMinimo: prod.invMinimo || '',
             invActual: prod.invActual || '',
             puntosLealtad: prod.puntosLealtad || '',
-            fechaCompra: prod.fechaCompra ? prod.fechaCompra.split('T')[0] : fechaHoyLocal()
+            fechaCompra: prod.fechaCompra ? prod.fechaCompra.split('T')[0] : fechaHoyLocal(),
+            insumo_producto_id: prod.insumo_producto_id || '',
+            insumo_cantidad: prod.insumo_cantidad ? String(prod.insumo_cantidad) : '1',
+            redondear_granel: Boolean(prod.redondear_granel), // <--- LÍNEA NUEVA
+            tipo_redondeo: prod.tipo_redondeo || 'peso_arriba' // <--- LÍNEA NUEVA
         });
 
         setOpciones({
@@ -735,15 +751,21 @@ export default function GestionProductos() {
     };
 
     const handleInputChange = (e) => {
-        const { name, value } = e.target;
-        
+        const { name, value, selectionStart, selectionEnd } = e.target;
         let valorFormateado = value;
 
         if (name === 'codigoBarras') {
             valorFormateado = value.toUpperCase();
-        } 
-        else if (['nombre', 'locacion', 'atributoColor', 'notaPaquete'].includes(name)) {
-            valorFormateado = formatoTitulo(value);
+        } else if (['nombre', 'locacion', 'atributoColor', 'notaPaquete'].includes(name)) {
+            // Capitaliza la primera letra y la primera letra después de cada espacio sin alterar las demás
+            valorFormateado = value.replace(/(?:^|\s)\p{L}/gu, (match) => match.toUpperCase());
+
+            // Preserva la posición original del cursor tras formatear
+            if (e.target.setSelectionRange && selectionStart !== null) {
+                requestAnimationFrame(() => {
+                    e.target.setSelectionRange(selectionStart, selectionEnd);
+                });
+            }
         }
 
         setDatosForm((prev) => ({ ...prev, [name]: valorFormateado }));
@@ -831,7 +853,11 @@ export default function GestionProductos() {
             invActual: parseFloat(datosForm.invActual) || 0,
             invMinimo: parseFloat(datosForm.invMinimo) || 0,
             costo: parseFloat(datosForm.costo) || 0,
-            precioVenta: parseFloat(datosForm.precioVenta) || 0
+            precioVenta: parseFloat(datosForm.precioVenta) || 0,
+            insumo_producto_id: opciones.esServicio && datosForm.insumo_producto_id ? parseInt(datosForm.insumo_producto_id, 10) : null,
+            insumo_cantidad: opciones.esServicio && datosForm.insumo_producto_id ? (parseFloat(datosForm.insumo_cantidad) || 1) : 0,
+            redondear_granel: opciones.aGranel ? Boolean(datosForm.redondear_granel) : false, // <--- LÍNEA NUEVA
+            tipo_redondeo: datosForm.tipo_redondeo || 'peso_arriba' // <--- LÍNEA NUEVA
         };
 
         const esEdicion = Boolean(datosForm.id);
@@ -910,13 +936,11 @@ export default function GestionProductos() {
         return 0;
     });
 
-    // --- NUEVO: CÁLCULO DE INVENTARIO Y GANANCIAS ---
     const statsInventario = productosFiltrados.reduce((acc, prod) => {
-        // Ignoramos los servicios porque no tienen inventario físico
         if (prod.esServicio) return acc;
         
         const stock = parseFloat(prod.invActual) || 0;
-        if (stock <= 0) return acc; // Si no hay stock, no suma dinero
+        if (stock <= 0) return acc;
 
         const costo = parseFloat(prod.costo) || 0;
         const precio = parseFloat(prod.precioVenta) || 0;
@@ -927,7 +951,6 @@ export default function GestionProductos() {
     }, { costoTotal: 0, ventasTotales: 0 });
 
     const gananciaTotal = statsInventario.ventasTotales - statsInventario.costoTotal;
-    // ------------------------------------------------
 
     const totalItems = productosOrdenados.length;
     const totalPaginas = Math.ceil(totalItems / itemsPorPagina) || 1;
@@ -939,6 +962,9 @@ export default function GestionProductos() {
     const paquetesCompletos = Math.floor(stockTotalPzs / pzsPorPaquete);
     const piezasSueltas = +(stockTotalPzs % pzsPorPaquete).toFixed(2);
     const deshabilitaInventario = opciones.esServicio;
+
+    // Lista de productos físicos disponibles para usarse como insumo
+    const insumosDisponibles = productos.filter(p => !p.esServicio && !p.esKit && p.id !== datosForm.id);
 
     return (
         <div className="gp-container">
@@ -957,7 +983,6 @@ export default function GestionProductos() {
                 <div className="gp-header-actions">
                     {vista !== 'formulario' ? (
                         <>
-                            {/* Pestañas de navegación superiores */}
                             <div className="gp-tabs-nav">
                                 <button 
                                     className={`gp-tab-nav-btn ${vista === 'catalogo' ? 'active' : ''}`}
@@ -990,7 +1015,7 @@ export default function GestionProductos() {
 
                             {vista === 'catalogo' && (
                                 <>
-                                    <div className="column-menu-wrapper">
+                                    <div className="column-menu-wrapper" ref={menuColumnasRef}>
                                         <button className="btn-secondary" onClick={() => setMostrarMenuColumnas(!mostrarMenuColumnas)}>
                                             ⚙️ Columnas
                                         </button>
@@ -1027,7 +1052,6 @@ export default function GestionProductos() {
                 </div>
             </header>
 
-            {/* VISTA DE GESTIÓN DE DEPARTAMENTOS, CATEGORÍAS Y PROVEEDORES */}
             {vista === 'gestion_catalogos' && (
                 <div className="gp-catalogo-view" style={{ maxWidth: '900px', margin: '0 auto' }}>
                     <div style={{ display: 'flex', gap: '8px', borderBottom: '2px solid #e2e8f0', paddingBottom: '10px' }}>
@@ -1138,7 +1162,6 @@ export default function GestionProductos() {
                 </div>
             )}
 
-            {/* VISTA DE KITS Y PAQUETES */}
             {vista === 'kits' && (
                 <div className="gp-catalogo-view">
                     <div className="gp-kits-builder">
@@ -1345,7 +1368,6 @@ export default function GestionProductos() {
                 </div>
             )}
 
-            {/* VISTA DE PROMOCIONES */}
             {vista === 'promociones' && (
                 <div className="gp-catalogo-view" style={{ maxWidth: '700px', margin: '0 auto' }}>
                     <h3>Crear Nueva Promoción o Campaña</h3>
@@ -1409,9 +1431,7 @@ export default function GestionProductos() {
                                 placeholder="🔍 Buscar por nombre, código, depto, categoría..."
                                 value={busqueda}
                                 onChange={(e) => setBusqueda(e.target.value)}
-                                /* AGREGA TODO ESTE BLOQUE onKeyDown: */
                                 onKeyDown={(e) => {
-                                    // Apuntamos directamente a la capa blanca que contiene toda la vista del catálogo
                                     const contenedorPrincipal = document.querySelector('.gp-container');
 
                                     let scrollPixels = 0;
@@ -1422,13 +1442,11 @@ export default function GestionProductos() {
 
                                     if (scrollPixels !== 0 && contenedorPrincipal) {
                                         e.preventDefault();
-                                        // Le indicamos al navegador que mueva la vista de forma suave
                                         contenedorPrincipal.scrollBy({
                                             top: scrollPixels,
                                             behavior: 'smooth'
                                         });
 
-                                        // Fallback por si la estructura de Tauri no reconoce smooth
                                         window.scrollBy({
                                             top: scrollPixels,
                                             behavior: 'smooth'
@@ -1451,7 +1469,6 @@ export default function GestionProductos() {
                                 <option value={10}>10 por pág.</option>
                                 <option value={20}>20 por pág.</option>
                                 <option value={50}>50 por pág.</option>
-                                {/* AGREGA ESTA LÍNEA: */}
                                 <option value={1000}>1000 por pág. (Todos)</option>
                             </select>
                         </div>
@@ -1534,6 +1551,11 @@ export default function GestionProductos() {
                                                         {prod.atributoColor && <small>({prod.atributoColor})</small>}
                                                         {prod.esKit ? <small style={{ color: '#0d6efd' }}>📦 [Kit]</small> : null}
                                                         {prod.aGranel ? <small style={{ color: '#16a34a' }}>⚖️ [Granel]</small> : null}
+                                                        {prod.esServicio && prod.insumo_producto_nombre ? (
+                                                            <small style={{ display: 'block', color: '#2563eb' }}>
+                                                                🔗 Consume: {prod.insumo_cantidad}x {prod.insumo_producto_nombre}
+                                                            </small>
+                                                        ) : null}
                                                     </td>
                                                 )}
                                                 {columnasVisibles.departamento && <td>{prod.departamento_nombre || <span style={{ color: '#aaa', fontStyle: 'italic' }}>Sin asignación</span>}</td>}
@@ -1543,7 +1565,7 @@ export default function GestionProductos() {
                                                 {columnasVisibles.precio && <td><strong>${parseFloat(prod.precioVenta || 0).toFixed(2)}</strong></td>}
                                                 {columnasVisibles.stock && (
                                                     <td>
-                                                        {prod.esServicio ? '—' : `${prod.invActual || 0} pza(s)`}
+                                                        {prod.esServicio ? '—' : `${prod.invActual || 0} ${prod.aGranel ? 'MT(S)' : 'pza(s)'}`}
                                                     </td>
                                                 )}
                                                 {columnasVisibles.estado && <td><span className={`badge ${badgeClass}`}>{badgeText}</span></td>}
@@ -1581,7 +1603,6 @@ export default function GestionProductos() {
                 </div>
             )}
 
-            {/* MODAL DE HISTORIAL DE COMPRAS / COSTOS Y REGISTRO RÁPIDO */}
             {productoHistorial && (
                 <div className="gp-modal-overlay">
                     <div className="gp-modal gp-modal-historial">
@@ -1784,7 +1805,6 @@ export default function GestionProductos() {
                             />
                         </label>
 
-                        {/* Opciones Especiales Excluyentes */}
                         <div className="gp-options-box">
                             <h4>Opciones Especiales:</h4>
                             <label className="checkbox-label">
@@ -1850,10 +1870,9 @@ export default function GestionProductos() {
                             ) : (
                                 <div className="gp-form-grid">
                                     {opciones.esServicio ? (
-                                        /* 1. MODO SERVICIO */
                                         <>
                                             <div className="form-group full-width" style={{ background: '#eff6ff', padding: '10px 14px', borderRadius: '6px', color: '#1e40af', fontSize: '0.85rem' }}>
-                                                ℹ️ <strong>Modo Servicio:</strong> No requiere inventario, empaques ni locación física. Solo define el precio al público y el costo de tus insumos si aplica.
+                                                ℹ️ <strong>Modo Servicio:</strong> Puedes vincular este servicio con un insumo físico para descontar material del inventario en cada venta (ej. hojas por copias).
                                             </div>
                                             <div className="form-group">
                                                 <label>Precio al Público ($):</label>
@@ -1898,14 +1917,192 @@ export default function GestionProductos() {
                                                     placeholder="0" 
                                                 />
                                             </div>
-                                        </>
-                                    ) : opciones.aGranel ? (
-                                        /* 2. MODO GRANEL / FRACCIÓN (METROS, ROLLOS, KILOS) */
-                                        <>
-                                            <div className="form-group full-width" style={{ background: '#ecfdf5', padding: '10px 14px', borderRadius: '6px', color: '#065f46', fontSize: '0.85rem' }}>
-                                                ⚖️ <strong>Modo Granel / Fracción:</strong> Ideal para papel por pliego o metro, forro, hule cristal y listones. Permite registrar rollos/cajas y cobrar decimales en caja.
+
+                                            {/* VINCULACIÓN DE INSUMO FÍSICO */}
+<div className="form-group full-width" style={{ marginTop: '12px', padding: '16px', background: '#f8fafc', border: '1px solid #cbd5e1', borderRadius: '8px' }}>
+    <h4 style={{ margin: '0 0 6px 0', color: '#0f172a', fontSize: '0.95rem' }}>
+        🔗 Vinculación con Insumo de Inventario (Opcional)
+    </h4>
+    <p style={{ margin: '0 0 14px 0', fontSize: '0.82rem', color: '#64748b' }}>
+        Selecciona el producto físico que se descontará del inventario cada vez que se cobre este servicio en caja (por ejemplo: Hoja Bond por cada copia):
+    </p>
+
+    <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '16px', alignItems: 'flex-start' }}>
+        {/* Columna Izquierda: Buscador predictivo o Tarjeta del Insumo Activo */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+            <label style={{ fontSize: '0.85rem', fontWeight: 'bold', color: '#0f172a' }}>
+                Producto a descontar:
+            </label>
+
+            {datosForm.insumo_producto_id ? (
+                // TARJETA CLARA DEL PRODUCTO SELECCIONADO
+                (() => {
+                    const insumoSeleccionado = productos.find(p => String(p.id) === String(datosForm.insumo_producto_id));
+                    return (
+                        <div style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            backgroundColor: '#eff6ff',
+                            border: '1.5px solid #93c5fd',
+                            borderRadius: '6px',
+                            padding: '10px 14px'
+                        }}>
+                            <div>
+                                <strong style={{ color: '#1e40af', fontSize: '0.9rem', display: 'block' }}>
+                                    ✓ {insumoSeleccionado?.nombre || 'Insumo Vinculado'}
+                                </strong>
+                                <span style={{ fontSize: '0.78rem', color: '#3b82f6' }}>
+                                    Cód: {insumoSeleccionado?.codigoBarras || 'S/N'} | Stock actual: <strong>{insumoSeleccionado?.invActual || 0} pzs</strong>
+                                </span>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setDatosForm(prev => ({ ...prev, insumo_producto_id: '', insumo_cantidad: '1' }));
+                                    setBusquedaInsumo('');
+                                }}
+                                style={{
+                                    backgroundColor: '#fee2e2',
+                                    border: '1px solid #fca5a5',
+                                    color: '#b91c1c',
+                                    padding: '6px 12px',
+                                    borderRadius: '5px',
+                                    fontWeight: 'bold',
+                                    fontSize: '0.78rem',
+                                    cursor: 'pointer'
+                                }}
+                                title="Quitar vinculación"
+                            >
+                                ✕ Quitar
+                            </button>
+                        </div>
+                    );
+                })()
+            ) : (
+                // BUSCADOR PREDICTIVO CUANDO NO HAY INSUMO VINCULADO
+                <div style={{ position: 'relative' }}>
+                    <input
+                        type="text"
+                        placeholder="🔍 Escribe para buscar insumo (ej. Hoja bond, cartulina)..."
+                        value={busquedaInsumo}
+                        onChange={(e) => setBusquedaInsumo(e.target.value)}
+                        style={{
+                            width: '100%',
+                            padding: '10px 12px',
+                            borderRadius: '6px',
+                            border: '1px solid #cbd5e1',
+                            fontSize: '0.85rem',
+                            boxSizing: 'border-box',
+                            outline: 'none'
+                        }}
+                    />
+                    {busquedaInsumo.trim().length > 0 && (
+                        <ul style={{
+                            position: 'absolute',
+                            top: 'calc(100% + 4px)',
+                            left: 0,
+                            right: 0,
+                            backgroundColor: '#ffffff',
+                            border: '1px solid #cbd5e1',
+                            borderRadius: '6px',
+                            boxShadow: '0 8px 16px rgba(0,0,0,0.12)',
+                            maxHeight: '200px',
+                            overflowY: 'auto',
+                            zIndex: 100,
+                            listStyle: 'none',
+                            margin: 0,
+                            padding: '4px 0'
+                        }}>
+                            {insumosDisponibles
+                                .filter(ins => 
+                                    ins.nombre.toLowerCase().includes(busquedaInsumo.toLowerCase()) || 
+                                    (ins.codigoBarras && ins.codigoBarras.toLowerCase().includes(busquedaInsumo.toLowerCase()))
+                                )
+                                .slice(0, 10)
+                                .map((ins) => (
+                                    <li
+                                        key={ins.id}
+                                        onClick={() => {
+                                            setDatosForm(prev => ({ ...prev, insumo_producto_id: ins.id }));
+                                            setBusquedaInsumo('');
+                                        }}
+                                        style={{
+                                            padding: '8px 12px',
+                                            cursor: 'pointer',
+                                            display: 'flex',
+                                            justifyContent: 'space-between',
+                                            alignItems: 'center',
+                                            borderBottom: '1px solid #f1f5f9',
+                                            fontSize: '0.85rem'
+                                        }}
+                                        onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#eff6ff'}
+                                        onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#ffffff'}
+                                    >
+                                        <div>
+                                            <strong>{ins.nombre}</strong>
+                                            <div style={{ fontSize: '0.75rem', color: '#64748b' }}>
+                                                Cód: {ins.codigoBarras || 'S/N'}
                                             </div>
-                                            <div className="form-group">
+                                        </div>
+                                        <span style={{ fontSize: '0.8rem', color: '#16a34a', fontWeight: 'bold' }}>
+                                            Stock: {ins.invActual || 0} pzs
+                                        </span>
+                                    </li>
+                                ))}
+                            {insumosDisponibles.filter(ins => ins.nombre.toLowerCase().includes(busquedaInsumo.toLowerCase())).length === 0 && (
+                                <li style={{ padding: '10px', textAlign: 'center', color: '#94a3b8', fontSize: '0.85rem' }}>
+                                    No se encontraron productos coincidentes
+                                </li>
+                            )}
+                        </ul>
+                    )}
+                </div>
+            )}
+        </div>
+
+        {/* Columna Derecha: Cantidad a descontar */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+            <label style={{ fontSize: '0.85rem', fontWeight: 'bold', color: '#0f172a' }}>
+                Pzs a descontar por servicio:
+            </label>
+            <input
+                type="number"
+                step="any"
+                min="0.1"
+                name="insumo_cantidad"
+                value={datosForm.insumo_cantidad}
+                onChange={handleInputChange}
+                placeholder="Ej. 1"
+                disabled={!datosForm.insumo_producto_id}
+                style={{
+                    width: '100%',
+                    padding: '8px 10px',
+                    borderRadius: '6px',
+                    border: '1px solid #cbd5e1',
+                    fontSize: '1rem',
+                    fontWeight: 'bold',
+                    textAlign: 'center',
+                    boxSizing: 'border-box',
+                    backgroundColor: !datosForm.insumo_producto_id ? '#f1f5f9' : '#ffffff'
+                }}
+            />
+            <small style={{ color: '#64748b', fontSize: '0.75rem' }}>
+                {datosForm.insumo_producto_id 
+                    ? 'Cantidad física que restará en cada venta' 
+                    : 'Selecciona un insumo primero'}
+            </small>
+        </div>
+    </div>
+</div>
+                                            
+                                        </>
+                                        ) : opciones.aGranel ? (
+                                            <>
+                                                <div className="form-group full-width" style={{ background: '#ecfdf5', padding: '10px 14px', borderRadius: '6px', color: '#065f46', fontSize: '0.85rem' }}>
+                                                    ⚖️ <strong>Modo Granel / Fracción:</strong> Ideal para papel por pliego o metro, forro, hule cristal y listones. Permite registrar rollos/cajas y cobrar decimales en caja.
+                                                </div>
+                                                <div className="form-group">
                                                 <label>Fecha de Entrada / Compra:</label>
                                                 <input type="date" name="fechaCompra" value={datosForm.fechaCompra} onChange={handleInputChange} />
                                             </div>
@@ -1957,7 +2154,6 @@ export default function GestionProductos() {
                                             </div>
                                         </>
                                     ) : (
-                                        /* 3. MODO NORMAL (LIBRETAS, PLUMAS Y ARTÍCULOS POR PIEZA) */
                                         <>
                                             <div className="form-group">
                                                 <label>Fecha de Compra / Entrada:</label>
@@ -2017,7 +2213,6 @@ export default function GestionProductos() {
                 </form>
             )}
 
-            {/* MODAL EDITAR DEPARTAMENTO, CATEGORÍA O PROVEEDOR */}
             {modalEditCatalog && (
                 <div className="gp-modal-overlay">
                     <div className="gp-modal">

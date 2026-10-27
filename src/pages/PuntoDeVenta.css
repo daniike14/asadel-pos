@@ -177,11 +177,68 @@
   margin: 0;
 }
 
-/* Botones Izquierdos */
+/* --- BOTONES DE ACCIONES RÁPIDAS EN VENTAS CON COLOR --- */
 .pos-quick-actions {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 8px;
+}
+
+.btn-pos-action {
+  padding: 10px 12px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  border: none;
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  transition: transform 0.1s ease, filter 0.15s ease, box-shadow 0.15s ease;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+}
+
+.btn-pos-action:hover {
+  filter: brightness(1.08);
+  transform: translateY(-1px);
+  box-shadow: 0 3px 6px rgba(0, 0, 0, 0.16);
+}
+
+.btn-pos-action:active {
+  transform: translateY(0);
+  filter: brightness(0.95);
+}
+
+/* 1. Entrada de Dinero (Verde esmeralda / Ingreso) */
+.btn-pos-entrada {
+  background-color: #0d9488;
+}
+
+/* 2. Salida de Dinero (Rojo coral / Egreso) */
+.btn-pos-salida {
+  background-color: #e11d48;
+}
+
+/* 3. Artículo no inventariado (Azul cielo vibrante) */
+.btn-pos-rapido {
+  background-color: #0284c7;
+}
+
+/* 4. Cotización (Índigo elegante) */
+.btn-pos-cotizacion {
+  background-color: #6366f1;
+}
+
+/* 5. Venta en espera (Ámbar / Pausa) */
+.btn-pos-espera {
+  background-color: #d97706;
+}
+
+/* 6. Cerrar Turno (Gris pizarra oscuro) */
+.btn-pos-turno {
+  background-color: #334155;
 }
 
 .btn-secondary {
@@ -698,10 +755,9 @@
   list-style: none;
 }
 
-/* Fila de encabezados de la lista */
 .pos-autocomplete-header {
   display: grid;
-  grid-template-columns: 1fr 140px 120px;
+  grid-template-columns: 130px 1fr 120px 110px;
   padding: 8px 14px;
   background-color: #f1f5f9;
   border-bottom: 2px solid #e2e8f0;
@@ -712,20 +768,30 @@
   letter-spacing: 0.5px;
 }
 
-.pos-autocomplete-header span:nth-child(2),
-.pos-autocomplete-header span:nth-child(3) {
+.pos-autocomplete-header span:nth-child(3),
+.pos-autocomplete-header span:nth-child(4) {
   text-align: right;
 }
 
-/* Renglón de cada producto */
 .pos-autocomplete-item {
   display: grid;
-  grid-template-columns: 1fr 140px 120px;
+  grid-template-columns: 130px 1fr 120px 110px;
   align-items: center;
   padding: 10px 14px;
   cursor: pointer;
   border-bottom: 1px solid #f1f5f9;
   transition: background-color 0.1s ease;
+}
+
+.pos-autocomplete-col-code {
+  font-family: monospace;
+  font-size: 12px;
+  font-weight: 700;
+  color: #2563eb;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding-right: 8px;
 }
 
 .pos-autocomplete-item:last-child {

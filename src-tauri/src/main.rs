@@ -1,6 +1,21 @@
-// Prevents additional console window on Windows in release, DO NOT REMOVE!!
-#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+#![cfg_attr(
+    all(not(debug_assertions), target_os = "windows"),
+    windows_subsystem = "windows"
+)]
+
+use tauri_plugin_shell::ShellExt;
 
 fn main() {
-    asadel_pos_lib::run()
+    tauri::Builder::default()
+        .plugin(tauri_plugin_shell::init())
+        .setup(|app| {
+            // Arrancamos nuestro servidor Node (Sidecar) invisible
+            let sidecar_command = app.shell().sidecar("backend").unwrap();
+            let (_receiver, _child) = sidecar_command
+                .spawn()
+                .expect("Fallo al arrancar el motor de la base de datos");
+            Ok(())
+        })
+        .run(tauri::generate_context!())
+        .expect("error while running tauri application");
 }

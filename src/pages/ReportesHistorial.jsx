@@ -30,11 +30,9 @@ const formatearFechaHoraLegible = (fechaHoraStr) => {
   return isNaN(d.getTime()) ? fechaHoraStr : d.toLocaleString();
 };
 
-
-
 export default function ReportesHistorial({ volverAlDashboard }) {
   const [pestañaActiva, setPestañaActiva] = useState('ventas'); // 'ventas' | 'movimientos' | 'cortes' | 'resurtido' | 'cierres'
-  const [cierresGlobales, setCierresGlobales] = useState([]); // <-- NUEVO ESTADO
+  const [cierresGlobales, setCierresGlobales] = useState([]);
   const [ventas, setVentas] = useState([]);
   const [cortes, setCortes] = useState([]);
   const [movimientos, setMovimientos] = useState([]);
@@ -93,11 +91,10 @@ export default function ReportesHistorial({ volverAlDashboard }) {
         fetch(`${API_URL}/api/empresa`),
         fetch(`${API_URL}/api/proveedores`),
         fetch(`${API_URL}/api/reportes/resurtido`),
-        fetch(`${API_URL}/api/cierre-global`) // <-- NUEVA LLAMADA
+        fetch(`${API_URL}/api/cierre-global`)
       ]);
 
-      // ... y abajito:
-      if (resCierres.ok) setCierresGlobales(await resCierres.json()); // <-- GUARDAR RESULTADO
+      if (resCierres.ok) setCierresGlobales(await resCierres.json());
       if (resVentas.ok) setVentas(await resVentas.json());
       if (resCortes.ok) setCortes(await resCortes.json());
       if (resMovs.ok) setMovimientos(await resMovs.json());
@@ -186,8 +183,11 @@ export default function ReportesHistorial({ volverAlDashboard }) {
     });
   }, [movimientos, filtroTexto, tipoMovimientoFiltro, fechaInicio, fechaFin]);
 
+  // Excluye registros erróneos creados como "Corte General (Z)" en cortes de turno
   const cortesFiltrados = useMemo(() => {
     return cortes.filter((c) => {
+      if (c.cajero === 'Corte General (Z)') return false;
+
       const coincideTexto = 
         c.folio?.toLowerCase().includes(filtroTexto.toLowerCase()) ||
         c.cajero?.toLowerCase().includes(filtroTexto.toLowerCase());
@@ -198,7 +198,15 @@ export default function ReportesHistorial({ volverAlDashboard }) {
     });
   }, [cortes, filtroTexto, fechaInicio, fechaFin]);
 
-  // Filtrado de la lista de resurtido
+  // Cierres Z con filtrado por fecha y texto
+  const cierresFiltrados = useMemo(() => {
+    return cierresGlobales.filter((c) => {
+      const coincideTexto = c.folio?.toLowerCase().includes(filtroTexto.toLowerCase());
+      const coincideFec = coincideFecha(c.fecha_hora);
+      return coincideTexto && coincideFec;
+    });
+  }, [cierresGlobales, filtroTexto, fechaInicio, fechaFin]);
+
   const resurtidoFiltrado = useMemo(() => {
     return listaResurtido.filter((p) => {
       const coincideTexto =
@@ -255,17 +263,14 @@ export default function ReportesHistorial({ volverAlDashboard }) {
     return { esperados, declarados, diferenciaTotal, totalCortes: cortesFiltrados.length };
   }, [cortesFiltrados]);
 
-  // --- NUEVO: CÁLCULO DE TOTALES PARA EL CIERRE GLOBAL (CORTE Z) ---
   const totalesCierresZ = useMemo(() => {
-    return cierresGlobales.reduce((acc, c) => {
+    return cierresFiltrados.reduce((acc, c) => {
       acc.ventas += (c.ventas_dia || 0);
       acc.ganancias += (c.ganancia_estimada || 0);
       return acc;
     }, { ventas: 0, ganancias: 0 });
-  }, [cierresGlobales]);
-  // -----------------------------------------------------------------
+  }, [cierresFiltrados]);
 
-  // Métricas del pedido de resurtido
   const metricasResurtido = useMemo(() => {
     const totalProductos = resurtidoFiltrado.length;
     let totalPiezasFaltantes = 0;
@@ -387,7 +392,7 @@ export default function ReportesHistorial({ volverAlDashboard }) {
             className={`tab-btn ${pestañaActiva === 'cierres' ? 'active' : ''}`}
             onClick={() => setPestañaActiva('cierres')}
           >
-            🌙 Cierres Z / Globales ({cierresGlobales.length})
+            🌙 Cierres Z / Globales ({cierresFiltrados.length})
           </button>
           <button 
             className={`tab-btn ${pestañaActiva === 'resurtido' ? 'active' : ''}`}
@@ -464,7 +469,6 @@ export default function ReportesHistorial({ volverAlDashboard }) {
             </div>
           </div>
         ) : (
-          /* FILTRO ESPECÍFICO PARA RESURTIDO Y BOTÓN DE ENCARGO */
           <div className="filter-row" style={{ alignItems: 'flex-end', justifyContent: 'space-between' }}>
             <div className="filter-group-inputs" style={{ flex: 1, maxWidth: '320px' }}>
               <div className="filter-field" style={{ width: '100%' }}>
@@ -523,6 +527,8 @@ export default function ReportesHistorial({ volverAlDashboard }) {
                 ? "Filtrar por concepto/motivo o cajero..."
                 : pestañaActiva === 'cortes'
                 ? "Filtrar cortes por folio o cajero..."
+                : pestañaActiva === 'cierres'
+                ? "Filtrar cierres por folio..."
                 : "Filtrar artículos por nombre, código, anaquel o nota..."
             }
             value={filtroTexto}
@@ -537,6 +543,12 @@ export default function ReportesHistorial({ volverAlDashboard }) {
           <div className="metric-box">
             <span>Total Vendido</span>
             <strong style={{ color: '#16a34a' }}>${metricasVentas.totalVentas.toFixed(2)}</strong>
+          </div>
+          <div className="metric-box">
+            <span>Ganancia Estimada</span>
+            <strong style={{ color: '#059669' }}>
+              ${(metricasVentas.totalVentas * 0.53).toFixed(2)}
+            </strong>
           </div>
           <div className="metric-box">
             <span>En Efectivo</span>
@@ -605,8 +617,7 @@ export default function ReportesHistorial({ volverAlDashboard }) {
         </div>
       )}
 
-{/* NUEVA TABLA: CIERRES GLOBALES (CORTE Z) */}
-      {/* NUEVA TABLA: CIERRES GLOBALES (CORTE Z) */}
+      {/* TABLA: CIERRES GLOBALES (CORTE Z) */}
       {pestañaActiva === 'cierres' && (
         <div className="reportes-table-wrapper">
           <table className="reportes-table tabla-cierres">
@@ -623,7 +634,7 @@ export default function ReportesHistorial({ volverAlDashboard }) {
               </tr>
             </thead>
             <tbody>
-              {cierresGlobales.map((c) => (
+              {cierresFiltrados.map((c) => (
                 <tr key={c.id}>
                   <td><strong>{c.folio}</strong></td>
                   <td>{formatearFechaHoraLegible(c.fecha_hora)}</td>
@@ -639,12 +650,11 @@ export default function ReportesHistorial({ volverAlDashboard }) {
                   </td>
                 </tr>
               ))}
-              {cierresGlobales.length === 0 && (
-                <tr><td colSpan="8" style={{ textAlign: 'center', padding: '30px', color: '#94a3b8' }}>No hay cierres globales (Corte Z) registrados aún.</td></tr>
+              {cierresFiltrados.length === 0 && (
+                <tr><td colSpan="8" style={{ textAlign: 'center', padding: '30px', color: '#94a3b8' }}>No hay cierres globales (Corte Z) registrados en este periodo.</td></tr>
               )}
             </tbody>
-            {/* NUEVA FILA DE TOTALES TIPO EXCEL */}
-            {cierresGlobales.length > 0 && (
+            {cierresFiltrados.length > 0 && (
               <tfoot>
                 <tr style={{ backgroundColor: '#f1f5f9', borderTop: '2px solid #cbd5e1' }}>
                   <td colSpan="6" style={{ textAlign: 'right', fontWeight: '900', fontSize: '14px', color: '#0f172a', padding: '12px' }}>
@@ -762,53 +772,38 @@ export default function ReportesHistorial({ volverAlDashboard }) {
       {/* TABLA DE MOVIMIENTOS */}
       {pestañaActiva === 'movimientos' && (
         <div className="reportes-table-wrapper">
-<table className="reportes-table">
+          <table className="reportes-table">
             <thead>
               <tr>
-                <th>Folio / Tipo</th>
-                <th>Fecha/Hora</th>
-                <th style={{ textAlign: 'right' }}>Declarado Físico</th>
-                <th style={{ textAlign: 'right' }}>Diferencia</th>
-                <th>Observaciones / Detalle (Billetes, Morralla)</th>
-                <th style={{ width: '80px', textAlign: 'center' }}>Acciones</th>
+                <th>ID</th>
+                <th>Fecha / Hora</th>
+                <th>Tipo</th>
+                <th>Monto</th>
+                <th>Motivo / Concepto</th>
+                <th>Cajero</th>
               </tr>
             </thead>
             <tbody>
-              {cortesFiltrados.map((c) => (
-                <tr key={c.id}>
+              {movimientosFiltrados.map((m) => (
+                <tr key={m.id}>
+                  <td>#{m.id}</td>
+                  <td>{new Date(m.fecha_hora).toLocaleString()}</td>
                   <td>
-                    <strong>{c.folio}</strong>
-                    <div style={{ fontSize: '11px', color: c.cajero.includes('(Z)') ? '#0f172a' : '#64748b', fontWeight: c.cajero.includes('(Z)') ? 'bold' : 'normal' }}>
-                      {c.cajero}
-                    </div>
-                  </td>
-                  <td>{formatearFechaHoraLegible(c.fecha_hora)}</td>
-                  <td style={{ textAlign: 'right', fontWeight: 'bold' }}>
-                    ${(c.saldo_declarado || 0).toFixed(2)}
-                  </td>
-                  <td style={{ textAlign: 'right' }}>
-                    <span style={{
-                      color: c.diferencia === 0 ? '#16a34a' : (c.diferencia > 0 ? '#0284c7' : '#dc2626'),
-                      fontWeight: 'bold'
-                    }}>
-                      {c.diferencia > 0 ? '+' : ''}{(c.diferencia || 0).toFixed(2)}
+                    <span className={`badge ${m.tipo === 'entrada' ? 'badge-success' : 'badge-danger'}`}>
+                      {m.tipo === 'entrada' ? 'Entrada' : 'Salida'}
                     </span>
                   </td>
-                  <td style={{ maxWidth: '300px', fontSize: '11px', color: '#475569', fontStyle: 'italic', lineHeight: '1.4' }}>
-                    {/* Aquí se imprimirá el texto exacto de billetes, morralla y ganancias del corte Z */}
-                    {c.observaciones || '—'}
+                  <td style={{ fontWeight: 'bold', color: m.tipo === 'entrada' ? '#16a34a' : '#dc2626' }}>
+                    {m.tipo === 'entrada' ? '+' : '-'}${parseFloat(m.monto).toFixed(2)}
                   </td>
-                  <td style={{ textAlign: 'center' }}>
-                    <button className="btn-accion-tabla" onClick={() => abrirTicketCorte(c)}>
-                      🖨️ Ver
-                    </button>
-                  </td>
+                  <td>{m.motivo}</td>
+                  <td>{m.cajero}</td>
                 </tr>
               ))}
-              {cortesFiltrados.length === 0 && (
+              {movimientosFiltrados.length === 0 && (
                 <tr>
-                  <td colSpan="6" style={{ textAlign: 'center', padding: '30px', color: '#94a3b8' }}>
-                    No hay cortes de caja registrados en este rango.
+                  <td colSpan="6" className="empty-state" style={{ textAlign: 'center', padding: '30px', color: '#94a3b8' }}>
+                    No hay movimientos registrados en este rango.
                   </td>
                 </tr>
               )}
@@ -871,7 +866,7 @@ export default function ReportesHistorial({ volverAlDashboard }) {
         </div>
       )}
 
-      {/* TABLA / HOJA DE RESURTIDO (COMBINADA) */}
+      {/* TABLA / HOJA DE RESURTIDO */}
       {pestañaActiva === 'resurtido' && (
         <div className="reportes-table-wrapper resurtido-print-area">
           <div className="nota-carta-header" style={{ marginBottom: '15px' }}>
@@ -937,7 +932,6 @@ export default function ReportesHistorial({ volverAlDashboard }) {
                     </td>
                     <td style={{ textAlign: 'center' }}>{prod.esManual ? '—' : `${min} pzs`}</td>
                     
-                    {/* Celda editable de cantidad a surtir */}
                     <td style={{ textAlign: 'center' }}>
                       <input
                         type="number"
@@ -950,7 +944,6 @@ export default function ReportesHistorial({ volverAlDashboard }) {
                       <span className="print-cant-resurtido">+{cantidadFinal} pzs</span>
                     </td>
 
-                    {/* Costo estimado recalculado en vivo */}
                     <td style={{ textAlign: 'right', fontWeight: 'bold' }}>
                       {subCosto > 0 ? `$${subCosto.toFixed(2)}` : '—'}
                     </td>
@@ -984,7 +977,7 @@ export default function ReportesHistorial({ volverAlDashboard }) {
         </div>
       )}
 
-      {/* MODAL ANOTAR ENCARGO / NOVEDAD */}
+      {/* MODAL ANOTAR ENCARGO */}
       {mostrarModalEncargo && (
         <div className="modal-overlay">
           <div className="modal-content" style={{ width: '450px' }}>
@@ -1066,7 +1059,7 @@ export default function ReportesHistorial({ volverAlDashboard }) {
         </div>
       )}
 
-      {/* DETALLE, REIMPRESIÓN Y CANCELACIÓN DE VENTA */}
+      {/* MODAL DETALLE / REIMPRESIÓN VENTA */}
       {tipoModal === 'reimprimir_venta' && elementoSeleccionado && (
         <div className="modal-overlay">
           <div className="modal-content modal-cotizacion-content">
@@ -1207,7 +1200,7 @@ export default function ReportesHistorial({ volverAlDashboard }) {
         </div>
       )}
 
-      {/* ARQUEO DE CAJA */}
+      {/* MODAL VER ARQUEO DE CORTE DE TURNO */}
       {tipoModal === 'ver_corte' && elementoSeleccionado && (
         <div className="modal-overlay">
           <div className="modal-content modal-corte-content">

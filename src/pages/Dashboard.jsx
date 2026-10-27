@@ -13,22 +13,57 @@ export default function Dashboard({ cambiarModulo }) {
     dineroCaja: 0
   });
 
+  const [fondoCajaFisico, setFondoCajaFisico] = useState(0);
   const [inventarioBajo, setInventarioBajo] = useState([]);
+  
+  const [usuarioActivo] = useState(() => {
+    const sesion = localStorage.getItem('asadel_usuario_sesion');
+    return sesion ? JSON.parse(sesion) : { nombre: 'Administrador', rol: 'admin' };
+  });
   const [departamentosData, setDepartamentosData] = useState([]);
+
+  // Estados para datos dinámicos de Empresa y Sucursal
+  const [datosEmpresa, setDatosEmpresa] = useState({
+    nombre: 'PAPELERÍA ASADEL',
+    sucursal: 'Sucursal Centro',
+    logo: ''
+  });
 
   // Estados para el Cierre de Caja Asadel
   const [modalCierreAbierto, setModalCierreAbierto] = useState(false);
   const [cierreForm, setCierreForm] = useState({
-    cajaInicial: '',
+    cajaInicial: 0,
     billetes: '',
     morralla: ''
   });
 
+  const [datosCorteSistema, setDatosCorteSistema] = useState({
+    ventasEfectivo: 0,
+    ventasTarjeta: 0,
+    ventasVales: 0,
+    ventasCodi: 0,
+    totalVentas: 0,
+    ticketsTotal: 0,
+    totalEntradas: 0,
+    totalSalidas: 0,
+    saldoEsperado: 0
+  });
+
+  const obtenerFondoActual = () => {
+    const fechaISO = new Date().getFullYear() + '-' + String(new Date().getMonth() + 1).padStart(2, '0') + '-' + String(new Date().getDate()).padStart(2, '0');
+    return parseFloat(localStorage.getItem(`caja_abierta_${fechaISO}`)) || 0;
+  };
+
   const cargarResumenDashboard = async () => {
     try {
-      const res = await fetch(`${API_URL}/api/dashboard/resumen`);
-      if (res.ok) {
-        const data = await res.json();
+      const [resDash, resBalance, resEmpresa] = await Promise.all([
+        fetch(`${API_URL}/api/dashboard/resumen`),
+        fetch(`${API_URL}/api/corte-caja/balance-actual`),
+        fetch(`${API_URL}/api/empresa`)
+      ]);
+
+      if (resDash.ok) {
+        const data = await resDash.json();
         setResumen({
           ventasDia: data.ventasDia || 0,
           ticketsDia: data.ticketsDia || 0,
@@ -40,6 +75,23 @@ export default function Dashboard({ cambiarModulo }) {
         setInventarioBajo(data.inventarioBajo || []);
         setDepartamentosData(data.departamentosResumen || []);
       }
+
+      if (resBalance.ok) {
+        const dataBalance = await resBalance.json();
+        setDatosCorteSistema(dataBalance);
+      }
+
+      if (resEmpresa.ok) {
+        const dataEmp = await resEmpresa.json();
+        if (dataEmp && dataEmp.nombre) {
+          setDatosEmpresa(dataEmp);
+          if (dataEmp.logo) {
+            setLogoEmpresa(dataEmp.logo);
+          }
+        }
+      }
+
+      setFondoCajaFisico(obtenerFondoActual());
     } catch (err) {
       console.error('Error al cargar datos del dashboard:', err);
     }
@@ -52,9 +104,10 @@ export default function Dashboard({ cambiarModulo }) {
   const fechaHoy = new Date().toLocaleDateString('es-MX', {
     weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
   });
-
   const fechaCorta = new Date().toLocaleDateString('es-MX');
   const horaActual = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+  const entradasExtra = Math.max(0, resumen.totalEntradas - fondoCajaFisico);
 
   // --- MATEMÁTICAS DEL CIERRE ASADEL ---
   const numCajaInicial = parseFloat(cierreForm.cajaInicial) || 0;
@@ -62,22 +115,22 @@ export default function Dashboard({ cambiarModulo }) {
   const numMorralla = parseFloat(cierreForm.morralla) || 0;
 
   const totalFisicoCaja = numBilletes + numMorralla;
-  // Ventas del Día según fórmula de Asadel: Total Físico - Caja Inicial
   const ventasAsadel = totalFisicoCaja > 0 ? (totalFisicoCaja - numCajaInicial) : 0;
-  // Ganancia estimada al 53% de las ventas
   const gananciaEstimada = ventasAsadel * 0.53;
-  // La caja de fondo para mañana es la misma morralla de hoy
   const cajaFondoManana = numMorralla;
 
+  const diferenciaSistemaVsFisico = totalFisicoCaja > 0 ? (totalFisicoCaja - resumen.dineroCaja) : 0;
 
   const [guardandoCierre, setGuardandoCierre] = useState(false);
   const [cierreGuardadoOK, setCierreGuardadoOK] = useState(false);
   const [logoEmpresa, setLogoEmpresa] = useState(logoDefault);
+
   useEffect(() => {
     const logoActual = localStorage.getItem('asadel_logo_temp');
     if (logoActual) setLogoEmpresa(logoActual);
     
     const escucharCambioEmpresa = () => {
+      cargarResumenDashboard();
       const logoNuevo = localStorage.getItem('asadel_logo_temp');
       if (logoNuevo) setLogoEmpresa(logoNuevo);
     };
@@ -91,30 +144,33 @@ export default function Dashboard({ cambiarModulo }) {
     setGuardandoCierre(true);
 
     const payload = {
-      cajero: 'Corte General (Z)',
-      ventasEfectivo: ventasAsadel, // Usamos la métrica de ventas físicas de tu papá
-      ventasTarjeta: resumen.ventasDia - ventasAsadel, // Diferencia teórica (opcional)
-      ventasVales: 0,
-      ventasCodi: 0,
-      totalEntradas: numCajaInicial,
-      totalSalidas: gananciaEstimada, // Guardamos la ganancia aquí como referencia
-      saldoEsperado: resumen.dineroCaja,
-      saldoDeclarado: totalFisicoCaja,
-      diferencia: totalFisicoCaja - resumen.dineroCaja,
-      observaciones: `Caja Inicial: $${numCajaInicial} | Billetes: $${numBilletes} | Morralla/Fondo Manana: $${numMorralla} | Ganancia 53%: $${gananciaEstimada.toFixed(2)}`
+      caja_inicial: numCajaInicial,
+      billetes: numBilletes,
+      morralla: numMorralla,
+      total_fisico: totalFisicoCaja,
+      ventas_dia: ventasAsadel,
+      ganancia_estimada: gananciaEstimada
     };
 
     try {
-      const res = await fetch(`${API_URL}/api/corte-caja`, {
+      const res = await fetch(`${API_URL}/api/cierre-global`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
 
       if (res.ok) {
-        alert('✅ ¡Cierre de Día guardado en el historial exitosamente!');
-        setCierreGuardadoOK(true); // Cambia el estado para ocultar el botón de guardar
-        cargarResumenDashboard(); // Recarga los números para que todo vuelva a cero
+        alert('✅ ¡Cierre Z (Global) guardado exitosamente!');
+        
+        Object.keys(localStorage).forEach((key) => {
+          if (key.startsWith('caja_abierta')) {
+            localStorage.removeItem(key);
+          }
+        });
+
+        setFondoCajaFisico(0);
+        setCierreGuardadoOK(true);
+        await cargarResumenDashboard();
       } else {
         alert('Error al guardar el corte de caja general.');
       }
@@ -125,13 +181,10 @@ export default function Dashboard({ cambiarModulo }) {
     }
   };
 
+  const abrirModalCierre = async () => {
+    await cargarResumenDashboard();
+    const fondoGuardado = obtenerFondoActual();
 
-const abrirModalCierre = () => {
-    // Buscamos si hubo una apertura de caja hoy para auto-llenarlo
-    const fechaHoyLocal = new Date().toLocaleDateString();
-    const fondoGuardado = localStorage.getItem(`caja_abierta_${fechaHoyLocal}`) || '0';
-
-    // Al abrir, limpiamos el formulario de billetes, pero pre-cargamos la caja inicial
     setCierreForm({ cajaInicial: fondoGuardado, billetes: '', morralla: '' });
     setCierreGuardadoOK(false);
     setModalCierreAbierto(true);
@@ -142,10 +195,10 @@ const abrirModalCierre = () => {
       <header className="dash-header">
         <div className="dash-branding">
           <img src={logoEmpresa} alt="Logo ASADEL" style={{ height: '32px' }} />
-          <h2>SUCURSAL CENTRO</h2>
+          <h2>{datosEmpresa.sucursal ? datosEmpresa.sucursal.toUpperCase() : 'SUCURSAL PRINCIPAL'}</h2>
         </div>
         <div className="dash-user-info">
-          <span>[ Hola, Administrador (Turno 1) ]</span>
+          <span>[ Hola, {usuarioActivo.nombre} ({usuarioActivo.rol === 'admin' ? 'Admin' : 'Cajero'}) ]</span>
         </div>
       </header>
 
@@ -164,8 +217,18 @@ const abrirModalCierre = () => {
             <h3>${resumen.ventasDia.toFixed(2)}</h3>
           </div>
           <div className="dash-stat-card">
-            <span>Entradas / Fondo</span>
-            <h3 style={{ color: '#0284c7' }}>+${resumen.totalEntradas.toFixed(2)}</h3>
+            <span>Ganancia Estimada</span>
+            <h3 style={{ color: '#059669' }}>
+              ${(resumen.ventasDia * 0.53).toFixed(2)}
+            </h3>
+          </div>
+          <div className="dash-stat-card">
+            <span>Fondo Inicial</span>
+            <h3 style={{ color: '#0284c7' }}>${fondoCajaFisico.toFixed(2)}</h3>
+          </div>
+          <div className="dash-stat-card">
+            <span>Entradas Extra</span>
+            <h3 style={{ color: '#3b82f6' }}>+${entradasExtra.toFixed(2)}</h3>
           </div>
           <div className="dash-stat-card">
             <span>Salidas / Gastos</span>
@@ -251,38 +314,30 @@ const abrirModalCierre = () => {
         </div>
       </div>
 
-      {/* =========================================================
-          MODAL DE CIERRE DE CAJA ASADEL (CORTE Z)
-          ========================================================= */}
+      {/* MODAL CORTE Z CON RESUMEN DE CORTE DE CAJA INTEGRADO */}
       {modalCierreAbierto && (
         <div className="dash-modal-overlay">
-          <div className="dash-modal-content">
+          <div className="dash-modal-content" style={{ maxWidth: '820px' }}>
             <div className="dash-modal-header no-print">
-              <h2>CORTE Z: CIERRE DE CAJA (ASADEL)</h2>
+              <h2>CORTE Z: CIERRE DE CAJA DEL DÍA</h2>
               <button className="dash-btn-close" onClick={() => setModalCierreAbierto(false)}>✕</button>
             </div>
 
             <div className="dash-modal-body">
-              {/* IZQUIERDA: Calculadora de Arqueo */}
               <div className="cierre-calculadora no-print">
-                <h3>📊 Calculadora de Conteo</h3>
+                <h3>📊 Balance del Sistema</h3>
 
-                <div className="cierre-grid-inputs">
-                  <div className="cierre-input-group">
-                    <label>Caja de Inicio ($):</label>
-                    <input
-                      type="number"
-                      min="0"
-                      step="0.5"
-                      placeholder="Con lo que iniciaste..."
-                      value={cierreForm.cajaInicial}
-                      onChange={(e) => setCierreForm({ ...cierreForm, cajaInicial: e.target.value })}
-                      autoFocus
-                    />
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', padding: '10px', background: '#f8fafc', borderRadius: '6px', border: '1px solid #e2e8f0', fontSize: '12px' }}>
+                  <div>Ventas Efectivo: <strong>${datosCorteSistema.ventasEfectivo.toFixed(2)}</strong></div>
+                  <div>Ventas Tarjeta: <strong>${datosCorteSistema.ventasTarjeta.toFixed(2)}</strong></div>
+                  <div>Fondo Apertura: <strong style={{ color: '#0284c7' }}>${numCajaInicial.toFixed(2)}</strong></div>
+                  <div>Salidas / Gastos: <strong style={{ color: '#dc2626' }}>-${datosCorteSistema.totalSalidas.toFixed(2)}</strong></div>
+                  <div style={{ gridColumn: 'span 2', borderTop: '1px solid #cbd5e1', paddingTop: '6px', marginTop: '2px' }}>
+                    Efectivo Esperado en Cajón: <strong style={{ color: '#16a34a', fontSize: '14px' }}>${resumen.dineroCaja.toFixed(2)}</strong>
                   </div>
                 </div>
 
-                <h4 style={{ fontSize: '13px', color: '#0f172a', margin: '15px 0 8px 0' }}>Suma Física en Caja:</h4>
+                <h4 style={{ fontSize: '13px', color: '#0f172a', margin: '14px 0 6px 0' }}>Suma Física en Cajón:</h4>
                 <div className="cierre-grid-inputs">
                   <div className="cierre-input-group">
                     <label>💵 Billetes ($):</label>
@@ -290,9 +345,10 @@ const abrirModalCierre = () => {
                       type="number"
                       min="0"
                       step="0.5"
-                      placeholder="Suma total billetes"
+                      placeholder="Total billetes"
                       value={cierreForm.billetes}
                       onChange={(e) => setCierreForm({ ...cierreForm, billetes: e.target.value })}
+                      autoFocus
                     />
                   </div>
                   <div className="cierre-input-group">
@@ -301,71 +357,102 @@ const abrirModalCierre = () => {
                       type="number"
                       min="0"
                       step="0.5"
-                      placeholder="Suma total monedas"
+                      placeholder="Total monedas"
                       value={cierreForm.morralla}
                       onChange={(e) => setCierreForm({ ...cierreForm, morralla: e.target.value })}
                     />
                   </div>
                 </div>
 
-                <div style={{ marginTop: '20px', padding: '12px', background: '#fef3c7', borderRadius: '6px', border: '1px solid #fde68a' }}>
-                  <p style={{ margin: 0, fontSize: '12px', color: '#92400e' }}>
-                    <strong>Nota:</strong> Los datos que ingreses aquí se imprimirán en el ticket de la derecha para tu control en papel.
-                  </p>
-                </div>
+                {totalFisicoCaja > 0 && (
+                  <div style={{ marginTop: '12px', padding: '10px', borderRadius: '6px', fontSize: '12px', fontWeight: 'bold', backgroundColor: diferenciaSistemaVsFisico === 0 ? '#dcfce7' : diferenciaSistemaVsFisico > 0 ? '#e0f2fe' : '#fee2e2', color: diferenciaSistemaVsFisico === 0 ? '#166534' : diferenciaSistemaVsFisico > 0 ? '#0369a1' : '#991b1b' }}>
+                    {diferenciaSistemaVsFisico === 0 
+                      ? '✅ La caja está cuadrada con el sistema' 
+                      : diferenciaSistemaVsFisico > 0 
+                      ? `🔼 Sobrante físico: +$${diferenciaSistemaVsFisico.toFixed(2)}` 
+                      : `⚠ Faltante físico: -$${Math.abs(diferenciaSistemaVsFisico).toFixed(2)}`}
+                  </div>
+                )}
               </div>
 
-              {/* DERECHA: Ticket para imprimir */}
               <div className="ticket-cierre-dia">
-                <h3>PAPELERÍA ASADEL</h3>
-                <p style={{ textAlign: 'center' }}>*** CIERRE DE CAJA DEL DÍA ***</p>
+                <h3>{datosEmpresa.nombre || 'PAPELERÍA ASADEL'}</h3>
+                <p style={{ textAlign: 'center' }}>*** CIERRE DE CAJA DEL DÍA (CORTE Z) ***</p>
                 <div className="ticket-divider"></div>
                 <p><strong>Fecha:</strong> {fechaCorta}</p>
                 <p><strong>Hora:</strong> {horaActual}</p>
 
                 <div className="ticket-divider"></div>
-                <p style={{ textAlign: 'center', fontWeight: 'bold' }}>CONTEO FÍSICO</p>
+                <p style={{ textAlign: 'center', fontWeight: 'bold' }}>VENTAS SEGÚN SISTEMA</p>
                 <div className="ticket-row">
-                  <span>Caja Inicial:</span>
+                  <span>Ventas en Efectivo:</span>
+                  <span>${datosCorteSistema.ventasEfectivo.toFixed(2)}</span>
+                </div>
+                <div className="ticket-row">
+                  <span>Ventas con Tarjeta:</span>
+                  <span>${datosCorteSistema.ventasTarjeta.toFixed(2)}</span>
+                </div>
+                <div className="ticket-row bold">
+                  <span>Total Ventas Sistema:</span>
+                  <span>${datosCorteSistema.totalVentas.toFixed(2)}</span>
+                </div>
+
+                <div className="ticket-divider"></div>
+                <p style={{ textAlign: 'center', fontWeight: 'bold' }}>MOVIMIENTOS DE CAJÓN</p>
+                <div className="ticket-row">
+                  <span>(+) Fondo de Apertura:</span>
                   <span>${numCajaInicial.toFixed(2)}</span>
                 </div>
+                <div className="ticket-row">
+                  <span>(+) Entradas Extra:</span>
+                  <span>+${entradasExtra.toFixed(2)}</span>
+                </div>
+                <div className="ticket-row">
+                  <span>(-) Gastos / Salidas:</span>
+                  <span>-${datosCorteSistema.totalSalidas.toFixed(2)}</span>
+                </div>
+                <div className="ticket-row bold">
+                  <span>Efectivo Esperado:</span>
+                  <span>${resumen.dineroCaja.toFixed(2)}</span>
+                </div>
+
+                <div className="ticket-divider"></div>
+                <p style={{ textAlign: 'center', fontWeight: 'bold' }}>CONTEO FÍSICO ARQUEO</p>
                 <div className="ticket-row">
                   <span>Billetes:</span>
                   <span>${numBilletes.toFixed(2)}</span>
                 </div>
                 <div className="ticket-row">
-                  <span>Morralla:</span>
+                  <span>Morralla (Fondo Mañana):</span>
                   <span>${numMorralla.toFixed(2)}</span>
                 </div>
-                <div className="ticket-row bold" style={{ marginTop: '6px' }}>
-                  <span>TOTAL EN CAJA:</span>
+                <div className="ticket-row bold" style={{ marginTop: '4px' }}>
+                  <span>TOTAL FÍSICO CONTADO:</span>
                   <span>${totalFisicoCaja.toFixed(2)}</span>
                 </div>
 
                 <div className="ticket-divider"></div>
-                <p style={{ textAlign: 'center', fontWeight: 'bold' }}>RESULTADOS DEL DÍA</p>
-
+                <p style={{ textAlign: 'center', fontWeight: 'bold' }}>LIQUIDACIÓN ASADEL</p>
                 <div className="ticket-row bold" style={{ color: '#0284c7' }}>
-                  <span>Ventas del Día:</span>
+                  <span>Ventas Netas del Día:</span>
                   <span>${ventasAsadel.toFixed(2)}</span>
                 </div>
                 <div className="ticket-row bold" style={{ color: '#dc2626' }}>
                   <span>Caja de Fondo (Mañana):</span>
                   <span>${cajaFondoManana.toFixed(2)}</span>
                 </div>
-
-                <div className="ticket-divider"></div>
-                <div className="ticket-row bold" style={{ color: '#16a34a', fontSize: '16px' }}>
-                  <span>Ganancias (53%):</span>
+                <div className="ticket-row bold" style={{ color: '#16a34a', fontSize: '15px', marginTop: '4px' }}>
+                  <span>Ganancia Neta (53%):</span>
                   <span>${gananciaEstimada.toFixed(2)}</span>
                 </div>
 
                 <div className="ticket-divider"></div>
-                <p style={{ textAlign: 'center', fontSize: '11px', marginTop: '10px' }}>
-                  (Cálculos basados en el conteo<br />físico ingresado por el administrador)
+                <p style={{ textAlign: 'center', fontSize: '11px', marginTop: '8px' }}>
+                  Comprobante diario de cierre de caja y arqueo general.
                 </p>
               </div>
             </div>
+            
             <div className="dash-modal-footer no-print">
               <button className="dash-btn-cancel" onClick={() => setModalCierreAbierto(false)}>Cerrar</button>
 
@@ -374,7 +461,7 @@ const abrirModalCierre = () => {
                   className="dash-btn-print"
                   onClick={guardarCierreAsadel}
                   disabled={totalFisicoCaja === 0 || guardandoCierre}
-                  style={{ backgroundColor: '#16a34a' }} /* Verde para guardar */
+                  style={{ backgroundColor: '#16a34a' }}
                 >
                   {guardandoCierre ? 'Guardando...' : '💾 Guardar en Historial'}
                 </button>

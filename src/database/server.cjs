@@ -3,26 +3,55 @@ const sqlite3 = require('sqlite3').verbose();
 const cors = require('cors');
 const fs = require('fs');
 const path = require('path');
+const os = require('os'); 
 
 const app = express();
 app.use(cors());
 
-// Límite de 10MB para recibir imágenes en Base64
-app.use(express.json({ limit: '10mb' }));
+// Límite ampliado a 150MB para soportar respaldos completos con imágenes en Base64
+app.use(express.json({ limit: '150mb' }));
+app.use(express.urlencoded({ limit: '150mb', extended: true }));
 
-// Resolver la ruta exacta de la base de datos detectando si server.cjs corre desde src/database o desde la raíz
-const RUTA_DB_ACTUAL = fs.existsSync(path.resolve(__dirname, 'puntos_de_venta.db'))
-  ? path.resolve(__dirname, 'puntos_de_venta.db')
-  : path.resolve(__dirname, 'src/database/puntos_de_venta.db');
+// --- FUNCIONES DE FECHA LOCAL EXACTA ---
+const getFechaLocal = () => {
+  const d = new Date();
+  const pad = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+};
+const getFechaHoraLocal = () => {
+  const d = new Date();
+  const pad = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+};
 
-const RUTA_DIR_DB = path.dirname(RUTA_DB_ACTUAL);
-if (!fs.existsSync(RUTA_DIR_DB)) {
-  fs.mkdirSync(RUTA_DIR_DB, { recursive: true });
+// --- LÓGICA DE RUTAS COMPATIBLE CON EJECUTABLE (.EXE) Y DESARROLLO ---
+let RUTA_DB_ACTUAL;
+let RUTA_BACKUPS;
+
+if (process.pkg) {
+  const baseAppData = process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming');
+  const RUTA_DIR_APP = path.join(baseAppData, 'AsadelPOS');
+  
+  if (!fs.existsSync(RUTA_DIR_APP)) {
+    fs.mkdirSync(RUTA_DIR_APP, { recursive: true });
+  }
+  
+  RUTA_DB_ACTUAL = path.join(RUTA_DIR_APP, 'puntos_de_venta.db');
+  RUTA_BACKUPS = path.join(RUTA_DIR_APP, 'backups');
+} else {
+  RUTA_DB_ACTUAL = fs.existsSync(path.resolve(__dirname, 'puntos_de_venta.db'))
+    ? path.resolve(__dirname, 'puntos_de_venta.db')
+    : path.resolve(__dirname, 'src/database/puntos_de_venta.db');
+
+  const RUTA_DIR_DB = path.dirname(RUTA_DB_ACTUAL);
+  if (!fs.existsSync(RUTA_DIR_DB)) {
+    fs.mkdirSync(RUTA_DIR_DB, { recursive: true });
+  }
+
+  const RUTA_RAIZ_PROYECTO = path.resolve(RUTA_DIR_DB, '..', '..');
+  RUTA_BACKUPS = path.resolve(RUTA_RAIZ_PROYECTO, 'backups');
 }
 
-// Carpeta de respaldos en la raíz del proyecto
-const RUTA_RAIZ_PROYECTO = path.resolve(RUTA_DIR_DB, '..', '..');
-const RUTA_BACKUPS = path.resolve(RUTA_RAIZ_PROYECTO, 'backups');
 if (!fs.existsSync(RUTA_BACKUPS)) {
   fs.mkdirSync(RUTA_BACKUPS, { recursive: true });
 }
@@ -32,328 +61,357 @@ let db = new sqlite3.Database(RUTA_DB_ACTUAL, (err) => {
   else console.log('✅ Base de datos SQLite conectada correctamente en:', RUTA_DB_ACTUAL);
 });
 
-db.serialize(() => {
-  db.run(`
-    CREATE TABLE IF NOT EXISTS productos (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      codigoBarras TEXT UNIQUE NOT NULL,
-      nombre TEXT NOT NULL,
-      locacion TEXT,
-      claveUnidad TEXT,
-      atributoColor TEXT,
-      departamento_id INTEGER,
-      categoria_id INTEGER,
-      proveedor_id INTEGER,
-      imagen TEXT, 
-      imagenLocacion TEXT,
-      costoPaquete REAL DEFAULT 0,
-      piezasPorPaquete INTEGER DEFAULT 1,
-      precioVentaPaquete REAL DEFAULT 0,
-      notaPaquete TEXT,
-      costo REAL DEFAULT 0,
-      precioVenta REAL DEFAULT 0,
-      ganancia REAL DEFAULT 0,
-      invMinimo INTEGER DEFAULT 0,
-      invActual REAL DEFAULT 0,
-      puntosLealtad INTEGER DEFAULT 0,
-      esServicio BOOLEAN DEFAULT 0,
-      esKit BOOLEAN DEFAULT 0,
-      aGranel BOOLEAN DEFAULT 0,
-      noInventariado BOOLEAN DEFAULT 0,
-      fechaCompra TEXT
-    )
-  `);
+// Inicialización y migración automática de tablas
+const inicializarBaseDeDatos = () => {
+  db.serialize(() => {
+    db.run(`
+      CREATE TABLE IF NOT EXISTS productos (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        codigoBarras TEXT UNIQUE NOT NULL,
+        nombre TEXT NOT NULL,
+        locacion TEXT,
+        claveUnidad TEXT,
+        atributoColor TEXT,
+        departamento_id INTEGER,
+        categoria_id INTEGER,
+        proveedor_id INTEGER,
+        imagen TEXT, 
+        imagenLocacion TEXT,
+        costoPaquete REAL DEFAULT 0,
+        piezasPorPaquete INTEGER DEFAULT 1,
+        precioVentaPaquete REAL DEFAULT 0,
+        notaPaquete TEXT,
+        costo REAL DEFAULT 0,
+        precioVenta REAL DEFAULT 0,
+        ganancia REAL DEFAULT 0,
+        invMinimo INTEGER DEFAULT 0,
+        invActual REAL DEFAULT 0,
+        puntosLealtad INTEGER DEFAULT 0,
+        esServicio BOOLEAN DEFAULT 0,
+        esKit BOOLEAN DEFAULT 0,
+        aGranel BOOLEAN DEFAULT 0,
+        noInventariado BOOLEAN DEFAULT 0,
+        fechaCompra TEXT,
+        insumo_producto_id INTEGER DEFAULT NULL,
+        insumo_cantidad REAL DEFAULT 0
+      )
+    `);
 
-  db.run(`ALTER TABLE productos ADD COLUMN fechaCompra TEXT`, () => {});
+    // Parches automáticos para bases existentes sin pérdida de información
+    db.run(`ALTER TABLE productos ADD COLUMN fechaCompra TEXT`, () => {});
+    db.run(`ALTER TABLE productos ADD COLUMN insumo_producto_id INTEGER DEFAULT NULL`, () => {});
+    db.run(`ALTER TABLE productos ADD COLUMN insumo_cantidad REAL DEFAULT 0`, () => {});
+    db.run(`ALTER TABLE productos ADD COLUMN redondear_granel BOOLEAN DEFAULT 0`, () => {});
+    db.run(`ALTER TABLE productos ADD COLUMN tipo_redondeo TEXT DEFAULT 'peso_arriba'`, () => {});
 
-  db.run(`
-    CREATE TABLE IF NOT EXISTS historial_costos (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      producto_id INTEGER NOT NULL,
-      proveedor TEXT NOT NULL,
-      costo_paquete REAL DEFAULT 0,
-      piezas_por_paquete INTEGER DEFAULT 1,
-      costo_unitario REAL NOT NULL,
-      cantidad_comprada REAL DEFAULT 0,
-      nota TEXT,
-      fecha_compra DATETIME DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY(producto_id) REFERENCES productos(id)
-    )
-  `);
+    db.run(`
+      CREATE TABLE IF NOT EXISTS historial_costos (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        producto_id INTEGER NOT NULL,
+        proveedor TEXT NOT NULL,
+        costo_paquete REAL DEFAULT 0,
+        piezas_por_paquete INTEGER DEFAULT 1,
+        costo_unitario REAL NOT NULL,
+        cantidad_comprada REAL DEFAULT 0,
+        nota TEXT,
+        fecha_compra DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY(producto_id) REFERENCES productos(id)
+      )
+    `);
 
-  db.run(`
-    CREATE TABLE IF NOT EXISTS compras_manuales (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      nombre TEXT NOT NULL,
-      cantidad REAL DEFAULT 1,
-      proveedor_id INTEGER,
-      proveedor_nombre TEXT,
-      costo_estimado REAL DEFAULT 0,
-      nota TEXT,
-      fecha_registro DATETIME DEFAULT CURRENT_TIMESTAMP
-    )
-  `);
+    db.run(`
+      CREATE TABLE IF NOT EXISTS compras_manuales (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        nombre TEXT NOT NULL,
+        cantidad REAL DEFAULT 1,
+        proveedor_id INTEGER,
+        proveedor_nombre TEXT,
+        costo_estimado REAL DEFAULT 0,
+        nota TEXT,
+        fecha_registro DATETIME DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
 
-  db.run(`
-    CREATE TABLE IF NOT EXISTS promociones (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      nombre TEXT NOT NULL,
-      tipo TEXT NOT NULL,
-      valor REAL DEFAULT 0
-    )
-  `, () => {
-    db.get('SELECT COUNT(*) as count FROM promociones', (err, row) => {
-      if (row && row.count === 0) {
-        const stmt = db.prepare('INSERT INTO promociones (nombre, tipo, valor) VALUES (?, ?, ?)');
-        stmt.run('10% Mayoreo Escolar', 'porcentaje', 10);
-        stmt.run('15% Campaña Temporada', 'porcentaje', 15);
-        stmt.run('20% Remate de Stock', 'porcentaje', 20);
-        stmt.finalize();
-      }
+    db.run(`
+      CREATE TABLE IF NOT EXISTS promociones (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        nombre TEXT NOT NULL,
+        tipo TEXT NOT NULL,
+        valor REAL DEFAULT 0
+      )
+    `, () => {
+      db.get('SELECT COUNT(*) as count FROM promociones', (err, row) => {
+        if (row && row.count === 0) {
+          const stmt = db.prepare('INSERT INTO promociones (nombre, tipo, valor) VALUES (?, ?, ?)');
+          stmt.run('10% Mayoreo Escolar', 'porcentaje', 10);
+          stmt.run('15% Campaña Temporada', 'porcentaje', 15);
+          stmt.run('20% Remate de Stock', 'porcentaje', 20);
+          stmt.finalize();
+        }
+      });
+    });
+
+    db.run(`
+      CREATE TABLE IF NOT EXISTS cierres_globales (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        folio TEXT UNIQUE NOT NULL,
+        fecha_hora DATETIME DEFAULT CURRENT_TIMESTAMP,
+        caja_inicial REAL DEFAULT 0,
+        billetes REAL DEFAULT 0,
+        morralla REAL DEFAULT 0,
+        total_fisico REAL DEFAULT 0,
+        ventas_dia REAL DEFAULT 0,
+        ganancia_estimada REAL DEFAULT 0
+      )
+    `);
+
+    db.run(`
+      CREATE TABLE IF NOT EXISTS ventas (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        folio TEXT UNIQUE NOT NULL,
+        fecha_hora DATETIME DEFAULT CURRENT_TIMESTAMP,
+        total REAL NOT NULL,
+        metodo_pago TEXT NOT NULL,
+        monto_efectivo REAL DEFAULT 0,
+        monto_tarjeta REAL DEFAULT 0,
+        monto_vales REAL DEFAULT 0,
+        monto_codi REAL DEFAULT 0,
+        cajero TEXT NOT NULL,
+        cliente_id INTEGER,
+        puntos_ganados INTEGER DEFAULT 0,
+        puntos_canjeados INTEGER DEFAULT 0,
+        estado TEXT DEFAULT 'completada'
+      )
+    `);
+
+    db.run(`ALTER TABLE ventas ADD COLUMN cliente_id INTEGER`, () => {});
+    db.run(`ALTER TABLE ventas ADD COLUMN puntos_ganados INTEGER DEFAULT 0`, () => {});
+    db.run(`ALTER TABLE ventas ADD COLUMN puntos_canjeados INTEGER DEFAULT 0`, () => {});
+    db.run(`ALTER TABLE ventas ADD COLUMN estado TEXT DEFAULT 'completada'`, () => {});
+    db.run(`ALTER TABLE ventas ADD COLUMN monto_vales REAL DEFAULT 0`, () => {});
+    db.run(`ALTER TABLE ventas ADD COLUMN monto_codi REAL DEFAULT 0`, () => {});
+
+    db.run(`
+      CREATE TABLE IF NOT EXISTS detalle_ventas (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        venta_id INTEGER NOT NULL,
+        producto_id INTEGER NOT NULL,
+        cantidad REAL NOT NULL,
+        precio_aplicado REAL NOT NULL,
+        descuento_porcentaje REAL DEFAULT 0,
+        comentario TEXT,
+        piezas_por_paquete REAL DEFAULT 1,
+        insumo_descontado_id INTEGER DEFAULT NULL,
+        insumo_descontado_cant REAL DEFAULT 0,
+        FOREIGN KEY(venta_id) REFERENCES ventas(id),
+        FOREIGN KEY(producto_id) REFERENCES productos(id)
+      )
+    `);
+
+    db.run(`ALTER TABLE detalle_ventas ADD COLUMN piezas_por_paquete REAL DEFAULT 1`, () => {});
+    db.run(`ALTER TABLE detalle_ventas ADD COLUMN insumo_descontado_id INTEGER DEFAULT NULL`, () => {});
+    db.run(`ALTER TABLE detalle_ventas ADD COLUMN insumo_descontado_cant REAL DEFAULT 0`, () => {});
+
+    db.run(`
+      CREATE TABLE IF NOT EXISTS movimientos_caja (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        tipo TEXT NOT NULL,
+        monto REAL NOT NULL,
+        motivo TEXT NOT NULL,
+        cajero TEXT NOT NULL,
+        fecha_hora DATETIME DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    db.run(`
+      CREATE TABLE IF NOT EXISTS cortes_caja (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        folio TEXT UNIQUE NOT NULL,
+        fecha_hora DATETIME DEFAULT CURRENT_TIMESTAMP,
+        cajero TEXT NOT NULL,
+        total_ventas_efectivo REAL DEFAULT 0,
+        total_ventas_tarjeta REAL DEFAULT 0,
+        total_ventas_vales REAL DEFAULT 0,
+        total_ventas_codi REAL DEFAULT 0,
+        total_entradas REAL DEFAULT 0,
+        total_salidas REAL DEFAULT 0,
+        saldo_esperado REAL DEFAULT 0,
+        saldo_declarado REAL DEFAULT 0,
+        diferencia REAL DEFAULT 0,
+        observaciones TEXT
+      )
+    `);
+
+    db.run(`ALTER TABLE cortes_caja ADD COLUMN total_ventas_vales REAL DEFAULT 0`, () => {});
+    db.run(`ALTER TABLE cortes_caja ADD COLUMN total_ventas_codi REAL DEFAULT 0`, () => {});
+
+    db.run(`
+      CREATE TABLE IF NOT EXISTS kits (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        codigo TEXT UNIQUE NOT NULL,
+        nombre TEXT NOT NULL,
+        precio REAL NOT NULL
+      )
+    `);
+
+    db.run(`
+      CREATE TABLE IF NOT EXISTS kit_detalles (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        kit_id INTEGER,
+        producto_id INTEGER,
+        cantidad REAL,
+        FOREIGN KEY(kit_id) REFERENCES kits(id),
+        FOREIGN KEY(producto_id) REFERENCES productos(id)
+      )
+    `);
+
+    db.run(`
+      CREATE TABLE IF NOT EXISTS departamentos (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        nombre TEXT NOT NULL UNIQUE
+      )
+    `);
+
+    db.run(`
+      CREATE TABLE IF NOT EXISTS categorias (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        nombre TEXT NOT NULL UNIQUE
+      )
+    `);
+
+    db.run(`
+      CREATE TABLE IF NOT EXISTS proveedores (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        nombre TEXT NOT NULL UNIQUE,
+        telefono TEXT,
+        contacto TEXT
+      )
+    `);
+
+    db.run(`
+      CREATE TABLE IF NOT EXISTS clientes (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        nombre TEXT NOT NULL,
+        telefono TEXT UNIQUE NOT NULL,
+        puntos_acumulados INTEGER DEFAULT 0,
+        fecha_registro DATETIME DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    db.run(`
+      CREATE TABLE IF NOT EXISTS empresa_datos (
+        id INTEGER PRIMARY KEY CHECK (id = 1),
+        nombre TEXT NOT NULL,
+        sucursal TEXT,
+        direccion TEXT,
+        telefono TEXT,
+        mensaje_ticket TEXT,
+        logo TEXT,
+        imprimir_ticket_auto BOOLEAN DEFAULT 1
+      )
+    `, () => {
+      db.run(`ALTER TABLE empresa_datos ADD COLUMN imprimir_ticket_auto BOOLEAN DEFAULT 1`, () => {});
+      db.get('SELECT COUNT(*) as count FROM empresa_datos', (err, row) => {
+        if (row && row.count === 0) {
+          db.run(`
+            INSERT INTO empresa_datos (id, nombre, sucursal, direccion, telefono, mensaje_ticket, imprimir_ticket_auto)
+            VALUES (1, 'PAPELERÍA ASADEL', 'Sucursal Centro', 'Av. Principal #123, Col. Centro', '55 1234 5678', '¡Gracias por su compra y preferencia!', 1)
+          `);
+        }
+      });
+    });
+
+    db.run(`
+      CREATE TABLE IF NOT EXISTS usuarios (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        usuario TEXT UNIQUE NOT NULL,
+        nombre TEXT NOT NULL,
+        password TEXT NOT NULL,
+        rol TEXT NOT NULL DEFAULT 'cajero',
+        activo BOOLEAN DEFAULT 1,
+        fecha_creacion DATETIME DEFAULT CURRENT_TIMESTAMP
+      )
+    `, () => {
+      db.get('SELECT COUNT(*) as count FROM usuarios', (err, row) => {
+        if (row && row.count === 0) {
+          const stmt = db.prepare('INSERT INTO usuarios (usuario, nombre, password, rol, activo) VALUES (?, ?, ?, ?, ?)');
+          stmt.run('admin', 'Administrador Principal', 'admin123', 'admin', 1);
+          stmt.run('turno1', 'Cajero Turno 1', 'caja123', 'cajero', 1);
+          stmt.finalize();
+        }
+      });
+    });
+
+    db.run(`
+      CREATE TABLE IF NOT EXISTS configuracion_lealtad (
+        clave TEXT PRIMARY KEY,
+        valor TEXT NOT NULL
+      )
+    `, () => {
+      db.get('SELECT COUNT(*) as count FROM configuracion_lealtad', (err, row) => {
+        if (row && row.count === 0) {
+          const stmt = db.prepare('INSERT INTO configuracion_lealtad (clave, valor) VALUES (?, ?)');
+          stmt.run('valor_punto_pesos', '1.0');
+          stmt.run('minimo_puntos_canje', '0');
+          stmt.run('porcentaje_max_descuento', '100');
+          stmt.finalize();
+        }
+      });
+    });
+
+    db.run(`
+      CREATE TABLE IF NOT EXISTS configuracion_respaldos (
+        clave TEXT PRIMARY KEY,
+        valor TEXT NOT NULL
+      )
+    `, () => {
+      db.get('SELECT COUNT(*) as count FROM configuracion_respaldos', (err, row) => {
+        if (row && row.count === 0) {
+          const stmt = db.prepare('INSERT INTO configuracion_respaldos (clave, valor) VALUES (?, ?)');
+          stmt.run('frecuencia_respaldo', 'diario');
+          stmt.run('ultimo_respaldo', getFechaHoraLocal());
+          stmt.finalize();
+        }
+      });
     });
   });
+};
 
-// --- NUEVA TABLA: CIERRES GLOBALES (CORTE Z) ---
-  db.run(`
-    CREATE TABLE IF NOT EXISTS cierres_globales (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      folio TEXT UNIQUE NOT NULL,
-      fecha_hora DATETIME DEFAULT CURRENT_TIMESTAMP,
-      caja_inicial REAL DEFAULT 0,
-      billetes REAL DEFAULT 0,
-      morralla REAL DEFAULT 0,
-      total_fisico REAL DEFAULT 0,
-      ventas_dia REAL DEFAULT 0,
-      ganancia_estimada REAL DEFAULT 0
-    )
-  `);
+inicializarBaseDeDatos();
 
-  db.run(`
-    CREATE TABLE IF NOT EXISTS ventas (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      folio TEXT UNIQUE NOT NULL,
-      fecha_hora DATETIME DEFAULT CURRENT_TIMESTAMP,
-      total REAL NOT NULL,
-      metodo_pago TEXT NOT NULL,
-      monto_efectivo REAL DEFAULT 0,
-      monto_tarjeta REAL DEFAULT 0,
-      monto_vales REAL DEFAULT 0,
-      monto_codi REAL DEFAULT 0,
-      cajero TEXT NOT NULL,
-      cliente_id INTEGER,
-      puntos_ganados INTEGER DEFAULT 0,
-      puntos_canjeados INTEGER DEFAULT 0,
-      estado TEXT DEFAULT 'completada'
-    )
-  `);
-
-  db.run(`ALTER TABLE ventas ADD COLUMN cliente_id INTEGER`, () => {});
-  db.run(`ALTER TABLE ventas ADD COLUMN puntos_ganados INTEGER DEFAULT 0`, () => {});
-  db.run(`ALTER TABLE ventas ADD COLUMN puntos_canjeados INTEGER DEFAULT 0`, () => {});
-  db.run(`ALTER TABLE ventas ADD COLUMN estado TEXT DEFAULT 'completada'`, () => {});
-  db.run(`ALTER TABLE ventas ADD COLUMN monto_vales REAL DEFAULT 0`, () => {});
-  db.run(`ALTER TABLE ventas ADD COLUMN monto_codi REAL DEFAULT 0`, () => {});
-
-  db.run(`
-    CREATE TABLE IF NOT EXISTS detalle_ventas (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      venta_id INTEGER NOT NULL,
-      producto_id INTEGER NOT NULL,
-      cantidad REAL NOT NULL,
-      precio_aplicado REAL NOT NULL,
-      descuento_porcentaje REAL DEFAULT 0,
-      comentario TEXT,
-      piezas_por_paquete REAL DEFAULT 1,
-      FOREIGN KEY(venta_id) REFERENCES ventas(id),
-      FOREIGN KEY(producto_id) REFERENCES productos(id)
-    )
-  `);
-
-  db.run(`ALTER TABLE detalle_ventas ADD COLUMN piezas_por_paquete REAL DEFAULT 1`, () => {});
-
-  db.run(`
-    CREATE TABLE IF NOT EXISTS movimientos_caja (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      tipo TEXT NOT NULL,
-      monto REAL NOT NULL,
-      motivo TEXT NOT NULL,
-      cajero TEXT NOT NULL,
-      fecha_hora DATETIME DEFAULT CURRENT_TIMESTAMP
-    )
-  `);
-
-  db.run(`
-    CREATE TABLE IF NOT EXISTS cortes_caja (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      folio TEXT UNIQUE NOT NULL,
-      fecha_hora DATETIME DEFAULT CURRENT_TIMESTAMP,
-      cajero TEXT NOT NULL,
-      total_ventas_efectivo REAL DEFAULT 0,
-      total_ventas_tarjeta REAL DEFAULT 0,
-      total_ventas_vales REAL DEFAULT 0,
-      total_ventas_codi REAL DEFAULT 0,
-      total_entradas REAL DEFAULT 0,
-      total_salidas REAL DEFAULT 0,
-      saldo_esperado REAL DEFAULT 0,
-      saldo_declarado REAL DEFAULT 0,
-      diferencia REAL DEFAULT 0,
-      observaciones TEXT
-    )
-  `);
-
-  db.run(`ALTER TABLE cortes_caja ADD COLUMN total_ventas_vales REAL DEFAULT 0`, () => {});
-  db.run(`ALTER TABLE cortes_caja ADD COLUMN total_ventas_codi REAL DEFAULT 0`, () => {});
-
-  db.run(`
-    CREATE TABLE IF NOT EXISTS kits (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      codigo TEXT UNIQUE NOT NULL,
-      nombre TEXT NOT NULL,
-      precio REAL NOT NULL
-    )
-  `);
-
-  db.run(`
-    CREATE TABLE IF NOT EXISTS kit_detalles (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      kit_id INTEGER,
-      producto_id INTEGER,
-      cantidad REAL,
-      FOREIGN KEY(kit_id) REFERENCES kits(id),
-      FOREIGN KEY(producto_id) REFERENCES productos(id)
-    )
-  `);
-
-  db.run(`
-    CREATE TABLE IF NOT EXISTS departamentos (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      nombre TEXT NOT NULL UNIQUE
-    )
-  `);
-
-  db.run(`
-    CREATE TABLE IF NOT EXISTS categorias (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      nombre TEXT NOT NULL UNIQUE
-    )
-  `);
-
-  db.run(`
-    CREATE TABLE IF NOT EXISTS proveedores (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      nombre TEXT NOT NULL UNIQUE,
-      telefono TEXT,
-      contacto TEXT
-    )
-  `);
-
-  db.run(`
-    CREATE TABLE IF NOT EXISTS clientes (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      nombre TEXT NOT NULL,
-      telefono TEXT UNIQUE NOT NULL,
-      puntos_acumulados INTEGER DEFAULT 0,
-      fecha_registro DATETIME DEFAULT CURRENT_TIMESTAMP
-    )
-  `);
-
-  db.run(`
-    CREATE TABLE IF NOT EXISTS empresa_datos (
-      id INTEGER PRIMARY KEY CHECK (id = 1),
-      nombre TEXT NOT NULL,
-      sucursal TEXT,
-      direccion TEXT,
-      telefono TEXT,
-      mensaje_ticket TEXT,
-      logo TEXT,
-      imprimir_ticket_auto BOOLEAN DEFAULT 1
-    )
-  `, () => {
-    db.run(`ALTER TABLE empresa_datos ADD COLUMN imprimir_ticket_auto BOOLEAN DEFAULT 1`, () => {});
-    db.get('SELECT COUNT(*) as count FROM empresa_datos', (err, row) => {
-      if (row && row.count === 0) {
-        db.run(`
-          INSERT INTO empresa_datos (id, nombre, sucursal, direccion, telefono, mensaje_ticket, imprimir_ticket_auto)
-          VALUES (1, 'PAPELERÍA ASADEL', 'Sucursal Centro', 'Av. Principal #123, Col. Centro', '55 1234 5678', '¡Gracias por su compra y preferencia!', 1)
-        `);
-      }
-    });
-  });
-
-  db.run(`
-    CREATE TABLE IF NOT EXISTS usuarios (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      usuario TEXT UNIQUE NOT NULL,
-      nombre TEXT NOT NULL,
-      password TEXT NOT NULL,
-      rol TEXT NOT NULL DEFAULT 'cajero',
-      activo BOOLEAN DEFAULT 1,
-      fecha_creacion DATETIME DEFAULT CURRENT_TIMESTAMP
-    )
-  `, () => {
-    db.get('SELECT COUNT(*) as count FROM usuarios', (err, row) => {
-      if (row && row.count === 0) {
-        const stmt = db.prepare('INSERT INTO usuarios (usuario, nombre, password, rol, activo) VALUES (?, ?, ?, ?, ?)');
-        stmt.run('admin', 'Administrador Principal', 'admin123', 'admin', 1);
-        stmt.run('turno1', 'Cajero Turno 1', 'caja123', 'cajero', 1);
-        stmt.finalize();
-      }
-    });
-  });
-
-  db.run(`
-    CREATE TABLE IF NOT EXISTS configuracion_lealtad (
-      clave TEXT PRIMARY KEY,
-      valor TEXT NOT NULL
-    )
-  `, () => {
-    db.get('SELECT COUNT(*) as count FROM configuracion_lealtad', (err, row) => {
-      if (row && row.count === 0) {
-        const stmt = db.prepare('INSERT INTO configuracion_lealtad (clave, valor) VALUES (?, ?)');
-        stmt.run('valor_punto_pesos', '1.0');
-        stmt.run('minimo_puntos_canje', '0');
-        stmt.run('porcentaje_max_descuento', '100');
-        stmt.finalize();
-      }
-    });
-  });
-
-  db.run(`
-    CREATE TABLE IF NOT EXISTS configuracion_respaldos (
-      clave TEXT PRIMARY KEY,
-      valor TEXT NOT NULL
-    )
-  `, () => {
-    db.get('SELECT COUNT(*) as count FROM configuracion_respaldos', (err, row) => {
-      if (row && row.count === 0) {
-        const stmt = db.prepare('INSERT INTO configuracion_respaldos (clave, valor) VALUES (?, ?)');
-        stmt.run('frecuencia_respaldo', 'diario');
-        stmt.run('ultimo_respaldo', new Date().toISOString());
-        stmt.finalize();
-      }
-    });
-  });
-
-  // Parches
-  db.run(`UPDATE ventas SET monto_efectivo = total WHERE metodo_pago = 'efectivo' AND monto_efectivo > total`, () => {});
-  db.run(`UPDATE cortes_caja SET fecha_hora = REPLACE(fecha_hora, ' ', 'T') || 'Z' WHERE fecha_hora NOT LIKE '%T%'`, () => {});
-  db.run(`UPDATE ventas SET fecha_hora = REPLACE(fecha_hora, ' ', 'T') || 'Z' WHERE fecha_hora NOT LIKE '%T%'`, () => {});
-  db.run(`UPDATE movimientos_caja SET fecha_hora = REPLACE(fecha_hora, ' ', 'T') || 'Z' WHERE fecha_hora NOT LIKE '%T%'`, () => {});
-});
-
-const ejecutarRespaldoEnDisco = () => {
+// --- RESPALDO CON MOTOR SQLITE SEGURO (VACUUM INTO) ---
+const ejecutarRespaldoEnDisco = (callback) => {
   try {
     if (!fs.existsSync(RUTA_DB_ACTUAL)) {
       console.error('❌ No se encontró la base de datos en:', RUTA_DB_ACTUAL);
+      if (callback) callback(new Error('Base de datos no encontrada'));
       return;
     }
-    const fechaStr = new Date().toISOString().replace(/[:.]/g, '-');
+    const fechaStr = getFechaHoraLocal().replace(/[:.]/g, '-');
     const destino = path.join(RUTA_BACKUPS, `respaldo_asadel_${fechaStr}.db`);
-    fs.copyFileSync(RUTA_DB_ACTUAL, destino);
-    db.run(`UPDATE configuracion_respaldos SET valor = ? WHERE clave = 'ultimo_respaldo'`, [new Date().toISOString()]);
-    console.log(`💾 Respaldo generado con éxito en: ${destino}`);
+    const destinoSql = destino.replace(/'/g, "''");
+
+    db.run(`VACUUM INTO '${destinoSql}'`, [], (err) => {
+      if (err) {
+        // Fallback por si la versión interna no permite VACUUM INTO
+        try {
+          fs.copyFileSync(RUTA_DB_ACTUAL, destino);
+          db.run(`UPDATE configuracion_respaldos SET valor = ? WHERE clave = 'ultimo_respaldo'`, [getFechaHoraLocal()]);
+          console.log(`💾 Respaldo generado por copia física en: ${destino}`);
+          if (callback) callback(null, destino);
+        } catch (copyErr) {
+          console.error('Error en fallback de respaldo:', copyErr);
+          if (callback) callback(copyErr);
+        }
+      } else {
+        db.run(`UPDATE configuracion_respaldos SET valor = ? WHERE clave = 'ultimo_respaldo'`, [getFechaHoraLocal()]);
+        console.log(`💾 Respaldo generado con éxito vía VACUUM INTO: ${destino}`);
+        if (callback) callback(null, destino);
+      }
+    });
   } catch (err) {
-    console.error('Error al generar respaldo:', err);
+    console.error('Error general al generar respaldo:', err);
+    if (callback) callback(err);
   }
 };
 
@@ -385,11 +443,14 @@ app.get('/api/productos', (req, res) => {
       p.*,
       d.nombre AS departamento_nombre,
       c.nombre AS categoria_nombre,
-      pr.nombre AS proveedor_nombre
+      pr.nombre AS proveedor_nombre,
+      ins.nombre AS insumo_nombre,
+      ins.invActual AS insumo_stock
     FROM productos p
     LEFT JOIN departamentos d ON p.departamento_id = d.id
     LEFT JOIN categorias c ON p.categoria_id = c.id
     LEFT JOIN proveedores pr ON p.proveedor_id = pr.id
+    LEFT JOIN productos ins ON p.insumo_producto_id = ins.id
     ORDER BY p.id DESC
   `;
   db.all(sql, [], (err, rows) => {
@@ -408,7 +469,9 @@ app.post('/api/productos', (req, res) => {
     costo, precioVenta, ganancia,
     invMinimo, invActual, puntosLealtad,
     esServicio, esKit, aGranel, noInventariado,
-    fechaCompra
+    fechaCompra,
+    insumo_producto_id, insumo_cantidad,
+    redondear_granel, tipo_redondeo
   } = req.body;
 
   const sql = `
@@ -418,11 +481,16 @@ app.post('/api/productos', (req, res) => {
       costoPaquete, piezasPorPaquete, precioVentaPaquete, notaPaquete,
       costo, precioVenta, ganancia,
       invMinimo, invActual, puntosLealtad,
-      esServicio, esKit, aGranel, noInventariado, fechaCompra
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      esServicio, esKit, aGranel, noInventariado, fechaCompra,
+      insumo_producto_id, insumo_cantidad,
+      redondear_granel, tipo_redondeo
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `;
 
-  const fechaCompraFinal = fechaCompra || new Date().toISOString().split('T')[0];
+  const fechaCompraFinal = fechaCompra || getFechaLocal();
+  const insumoIdFinal = (esServicio && insumo_producto_id) ? parseInt(insumo_producto_id, 10) : null;
+  const insumoCantFinal = (esServicio && insumo_cantidad) ? parseFloat(insumo_cantidad) : 0;
+
   const params = [
     codigoBarras || '', nombre, locacion || '', claveUnidad || 'PZA', atributoColor || '',
     departamento_id || departamento || null,
@@ -435,7 +503,11 @@ app.post('/api/productos', (req, res) => {
     esServicio || noInventariado ? 0 : (parseFloat(invActual) || 0),
     puntosLealtad || 0,
     esServicio ? 1 : 0, esKit ? 1 : 0, aGranel ? 1 : 0, noInventariado ? 1 : 0,
-    fechaCompraFinal
+    fechaCompraFinal,
+    insumoIdFinal,
+    insumoCantFinal,
+    redondear_granel ? 1 : 0,
+    tipo_redondeo || 'peso_arriba'
   ];
 
   db.run(sql, params, function (err) {
@@ -473,8 +545,13 @@ app.put('/api/productos/:id', (req, res) => {
     costo, precioVenta, ganancia,
     invMinimo, invActual, puntosLealtad,
     esServicio, esKit, aGranel, noInventariado,
-    fechaCompra
+    fechaCompra,
+    insumo_producto_id, insumo_cantidad,
+    redondear_granel, tipo_redondeo
   } = req.body;
+
+  const insumoIdFinal = (esServicio && insumo_producto_id) ? parseInt(insumo_producto_id, 10) : null;
+  const insumoCantFinal = (esServicio && insumo_cantidad) ? parseFloat(insumo_cantidad) : 0;
 
   const sql = `
     UPDATE productos SET
@@ -484,7 +561,11 @@ app.put('/api/productos/:id', (req, res) => {
       costo = ?, precioVenta = ?, ganancia = ?,
       invMinimo = ?, invActual = ?, puntosLealtad = ?,
       esServicio = ?, esKit = ?, aGranel = ?, noInventariado = ?,
-      fechaCompra = ?
+      fechaCompra = ?,
+      insumo_producto_id = ?,
+      insumo_cantidad = ?,
+      redondear_granel = ?,
+      tipo_redondeo = ?
     WHERE id = ?
   `;
 
@@ -500,7 +581,11 @@ app.put('/api/productos/:id', (req, res) => {
     esServicio || noInventariado ? 0 : (parseFloat(invActual) || 0),
     puntosLealtad || 0,
     esServicio ? 1 : 0, esKit ? 1 : 0, aGranel ? 1 : 0, noInventariado ? 1 : 0,
-    fechaCompra || new Date().toISOString().split('T')[0],
+    fechaCompra || getFechaLocal(),
+    insumoIdFinal,
+    insumoCantFinal,
+    redondear_granel ? 1 : 0,
+    tipo_redondeo || 'peso_arriba',
     id
   ];
 
@@ -551,7 +636,7 @@ app.post('/api/productos/:id/registrar-compra', (req, res) => {
   const costoUniNum = parseFloat(costoUnitario) || 0;
   const costoPaqNum = parseFloat(costoPaquete) || 0;
   const pzsPaqNum = parseInt(piezasPorPaquete, 10) || 1;
-  const fechaFinal = fechaCompra || new Date().toISOString().split('T')[0];
+  const fechaFinal = fechaCompra || getFechaLocal();
 
   const sqlHistorial = `
     INSERT INTO historial_costos (
@@ -621,7 +706,7 @@ app.post('/api/movimientos-caja', (req, res) => {
   if (!tipo || !monto || !motivo) return res.status(400).json({ error: 'Faltan campos obligatorios.' });
 
   const sql = `INSERT INTO movimientos_caja (tipo, monto, motivo, cajero, fecha_hora) VALUES (?, ?, ?, ?, ?)`;
-  db.run(sql, [tipo, parseFloat(monto) || 0, motivo.trim(), cajero || 'Turno 1', new Date().toISOString()], function (err) {
+  db.run(sql, [tipo, parseFloat(monto) || 0, motivo.trim(), cajero || 'Turno 1', getFechaHoraLocal()], function (err) {
     if (err) return res.status(500).json({ error: err.message });
     res.json({ mensaje: 'Movimiento registrado correctamente', id: this.lastID });
   });
@@ -638,6 +723,8 @@ app.get('/api/corte-caja/balance-actual', (req, res) => {
   db.get('SELECT fecha_hora FROM cortes_caja ORDER BY id DESC LIMIT 1', [], (errUltimo, rowUltimo) => {
     if (errUltimo) return res.status(500).json({ error: errUltimo.message });
 
+    const fechaHoy = getFechaLocal();
+    
     let filtroFechaVentas = "estado != 'cancelada'";
     let filtroFechaMovs = "1=1";
     let parametros = [];
@@ -647,8 +734,9 @@ app.get('/api/corte-caja/balance-actual', (req, res) => {
       filtroFechaMovs += " AND fecha_hora > ?";
       parametros.push(rowUltimo.fecha_hora);
     } else {
-      filtroFechaVentas += " AND date(fecha_hora, 'localtime') = date('now', 'localtime')";
-      filtroFechaMovs += " AND date(fecha_hora, 'localtime') = date('now', 'localtime')";
+      filtroFechaVentas += " AND substr(fecha_hora, 1, 10) = ?";
+      filtroFechaMovs += " AND substr(fecha_hora, 1, 10) = ?";
+      parametros.push(fechaHoy);
     }
 
     const sqlVentas = `
@@ -701,11 +789,10 @@ app.get('/api/corte-caja/balance-actual', (req, res) => {
   });
 });
 
-// --- NUEVAS RUTAS PARA CIERRE DE CAJA GLOBAL (CORTE Z) ---
 app.post('/api/cierre-global', (req, res) => {
-  const { caja_inicial, billetes, morralla, total_fisico, ventas_dia, ganancia_estimada } = req.body;
+  const { caja_inicial, billetes, morralla, total_fisico, ventas_dia, ganancia_estimada, fecha_hora } = req.body;
   const folio = `CIERRE-${Date.now().toString().slice(-6)}`;
-  const fechaHoraActual = new Date().toISOString(); 
+  const fechaHoraActual = fecha_hora || getFechaHoraLocal();
 
   const sql = `
     INSERT INTO cierres_globales (
@@ -716,6 +803,66 @@ app.post('/api/cierre-global', (req, res) => {
   db.run(sql, [folio, fechaHoraActual, caja_inicial, billetes, morralla, total_fisico, ventas_dia, ganancia_estimada], function (err) {
     if (err) return res.status(500).json({ error: err.message });
     res.json({ mensaje: 'Cierre Global registrado correctamente', id: this.lastID, folio });
+  });
+});
+
+// Validar si hay un día anterior con ventas sin Cierre Z
+app.get('/api/cierre-global/pendiente', (req, res) => {
+  const fechaHoy = getFechaLocal();
+
+  // Buscar el día más reciente con ventas anteriores a hoy
+  const sqlUltimoDiaVentas = `
+    SELECT substr(fecha_hora, 1, 10) as fecha_venta
+    FROM ventas
+    WHERE substr(fecha_hora, 1, 10) < ? AND estado != 'cancelada'
+    ORDER BY fecha_hora DESC
+    LIMIT 1
+  `;
+
+  db.get(sqlUltimoDiaVentas, [fechaHoy], (errV, rowVenta) => {
+    if (errV) return res.status(500).json({ error: errV.message });
+    if (!rowVenta || !rowVenta.fecha_venta) {
+      return res.json({ tienePendiente: false });
+    }
+
+    const fechaPendiente = rowVenta.fecha_venta;
+
+    // Verificar si ese día ya cuenta con un Cierre Z registrado
+    const sqlCierreExiste = `
+      SELECT id FROM cierres_globales
+      WHERE substr(fecha_hora, 1, 10) = ?
+      LIMIT 1
+    `;
+
+    db.get(sqlCierreExiste, [fechaPendiente], (errC, rowCierre) => {
+      if (errC) return res.status(500).json({ error: errC.message });
+      if (rowCierre) {
+        return res.json({ tienePendiente: false });
+      }
+
+      // Si no hay cierre registrado para ese día, se calculan las métricas de esa jornada
+      const sqlTotalesDia = `
+        SELECT 
+          COALESCE(SUM(total), 0) as ventasDia,
+          COALESCE(SUM(CASE WHEN metodo_pago IN ('efectivo', 'mixto') THEN monto_efectivo ELSE 0 END), 0) as efectivoEsperado,
+          COUNT(*) as totalTickets
+        FROM ventas
+        WHERE substr(fecha_hora, 1, 10) = ? AND estado != 'cancelada'
+      `;
+
+      db.get(sqlTotalesDia, [fechaPendiente], (errT, totales) => {
+        if (errT) return res.status(500).json({ error: errT.message });
+
+        res.json({
+          tienePendiente: true,
+          fechaPendiente,
+          ventasDia: totales?.ventasDia || 0,
+          efectivoEsperado: totales?.efectivoEsperado || 0,
+          totalTickets: totales?.totalTickets || 0,
+          gananciaEstimada: (totales?.ventasDia || 0) * 0.53
+        });
+      });
+    });
   });
 });
 
@@ -742,7 +889,7 @@ app.post('/api/corte-caja', (req, res) => {
   } = req.body;
 
   const folio = `CORTE-${Date.now().toString().slice(-6)}`;
-  const fechaHoraActual = new Date().toISOString(); 
+  const fechaHoraActual = getFechaHoraLocal(); 
   const sql = `
     INSERT INTO cortes_caja (
       folio, fecha_hora, cajero, total_ventas_efectivo, total_ventas_tarjeta, total_ventas_vales, total_ventas_codi,
@@ -775,6 +922,7 @@ app.post('/api/corte-caja', (req, res) => {
   );
 });
 
+// PROCESAMIENTO DE VENTAS CON DEDUCCIÓN DE INSUMOS
 app.post('/api/ventas', (req, res) => {
   const {
     folio,
@@ -797,19 +945,27 @@ app.post('/api/ventas', (req, res) => {
   }
 
   const demandaPorProducto = {};
+
   items.forEach((item) => {
+    const cant = parseFloat(item.cantidad) || 0;
+
     if (!item.esServicio && !item.noInventariado && item.id > 0 && !item.esKit) {
-      const cant = parseFloat(item.cantidad) || 0;
       const pzsFactor = item.esVentaPaquete ? (parseFloat(item.piezasPorPaquete) || 1) : 1;
       const piezasReales = cant * pzsFactor;
       demandaPorProducto[item.id] = (demandaPorProducto[item.id] || 0) + piezasReales;
+    }
+
+    if (item.esServicio && item.insumo_producto_id && parseFloat(item.insumo_cantidad) > 0) {
+      const insumoId = parseInt(item.insumo_producto_id, 10);
+      const totalInsumo = cant * parseFloat(item.insumo_cantidad);
+      demandaPorProducto[insumoId] = (demandaPorProducto[insumoId] || 0) + totalInsumo;
     }
   });
 
   const idsFisicos = Object.keys(demandaPorProducto);
 
   const procesarGuardado = () => {
-    const fechaHoraFinal = fecha_hora || new Date().toISOString();
+    const fechaHoraFinal = fecha_hora || getFechaHoraLocal();
 
     db.run(
       `INSERT INTO ventas (folio, fecha_hora, total, metodo_pago, monto_efectivo, monto_tarjeta, monto_vales, monto_codi, cajero, cliente_id, puntos_ganados, puntos_canjeados, estado) 
@@ -833,7 +989,7 @@ app.post('/api/ventas', (req, res) => {
         const ventaId = this.lastID;
 
         const stmtDetalle = db.prepare(
-          `INSERT INTO detalle_ventas (venta_id, producto_id, cantidad, precio_aplicado, descuento_porcentaje, comentario, piezas_por_paquete) VALUES (?, ?, ?, ?, ?, ?, ?)`
+          `INSERT INTO detalle_ventas (venta_id, producto_id, cantidad, precio_aplicado, descuento_porcentaje, comentario, piezas_por_paquete, insumo_descontado_id, insumo_descontado_cant) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
         );
         const stmtStock = db.prepare(`UPDATE productos SET invActual = invActual - ? WHERE id = ?`);
 
@@ -842,7 +998,7 @@ app.post('/api/ventas', (req, res) => {
           const factorEmpaque = item.esVentaPaquete ? (parseFloat(item.piezasPorPaquete) || 1) : 1;
 
           if (item.esKit && item.kit_id) {
-            stmtDetalle.run(ventaId, item.id || 0, cantItem, item.precioUnitario, item.descuento || 0, `Kit: ${item.nombre}`, 1);
+            stmtDetalle.run(ventaId, item.id || 0, cantItem, item.precioUnitario, item.descuento || 0, `Kit: ${item.nombre}`, 1, null, 0);
 
             db.all(`SELECT producto_id, cantidad FROM kit_detalles WHERE kit_id = ?`, [item.kit_id], (errK, componentes) => {
               if (!errK && componentes) {
@@ -852,10 +1008,21 @@ app.post('/api/ventas', (req, res) => {
                 });
               }
             });
+          } else if (item.esServicio) {
+            const tieneInsumo = Boolean(item.insumo_producto_id && parseFloat(item.insumo_cantidad) > 0);
+            const insumoId = tieneInsumo ? parseInt(item.insumo_producto_id, 10) : null;
+            const cantInsumoTotal = tieneInsumo ? (cantItem * parseFloat(item.insumo_cantidad)) : 0;
+
+            stmtDetalle.run(ventaId, item.id || 0, cantItem, item.precioUnitario, item.descuento || 0, item.comentario || '', 1, insumoId, cantInsumoTotal);
+
+            if (tieneInsumo) {
+              stmtStock.run(cantInsumoTotal, insumoId);
+            }
           } else {
             const notaItem = item.esVentaPaquete ? `[PAQUETE ${item.piezasPorPaquete} pzs] ${item.comentario || ''}`.trim() : (item.comentario || '');
-            stmtDetalle.run(ventaId, item.id || 0, cantItem, item.precioUnitario, item.descuento || 0, notaItem, factorEmpaque);
-            if (!item.esServicio && !item.noInventariado && item.id > 0) {
+            stmtDetalle.run(ventaId, item.id || 0, cantItem, item.precioUnitario, item.descuento || 0, notaItem, factorEmpaque, null, 0);
+
+            if (!item.noInventariado && item.id > 0) {
               const totalPiezasADescontar = cantItem * factorEmpaque;
               stmtStock.run(totalPiezasADescontar, item.id);
             }
@@ -903,6 +1070,7 @@ app.post('/api/ventas', (req, res) => {
   }
 });
 
+// CANCELACIÓN DE VENTA CON RESTITUCIÓN DE INSUMOS
 app.post('/api/ventas/:id/cancelar', (req, res) => {
   const { id } = req.params;
 
@@ -917,14 +1085,12 @@ app.post('/api/ventas/:id/cancelar', (req, res) => {
         db.run('BEGIN TRANSACTION');
         db.run(`UPDATE ventas SET estado = 'cancelada' WHERE id = ?`, [id]);
 
-        const stmtStock = db.prepare(`
-          UPDATE productos 
-          SET invActual = invActual + ? 
-          WHERE id = ? AND esServicio = 0 AND noInventariado = 0
-        `);
+        const stmtStock = db.prepare(`UPDATE productos SET invActual = invActual + ? WHERE id = ?`);
 
         detalles.forEach((det) => {
-          if (det.producto_id && det.producto_id > 0) {
+          if (det.insumo_descontado_id && parseFloat(det.insumo_descontado_cant) > 0) {
+            stmtStock.run(parseFloat(det.insumo_descontado_cant), det.insumo_descontado_id);
+          } else if (det.producto_id && det.producto_id > 0) {
             const cant = parseFloat(det.cantidad) || 0;
             const factor = parseFloat(det.piezas_por_paquete) || 1;
             stmtStock.run(cant * factor, det.producto_id);
@@ -939,7 +1105,7 @@ app.post('/api/ventas/:id/cancelar', (req, res) => {
 
           db.run(
             `UPDATE clientes SET puntos_acumulados = MAX(0, puntos_acumulados + ?) WHERE id = ?`,
-            [delta, venta.cliente_id]
+            [delta, cliente_id]
           );
         }
 
@@ -972,7 +1138,6 @@ app.post('/api/kits', (req, res) => {
   });
 });
 
-// NUEVA RUTA PARA EDITAR (ACTUALIZAR) KITS EXISTENTES
 app.put('/api/kits/:id', (req, res) => {
   const { id } = req.params;
   const { codigo, nombre, precio, items } = req.body;
@@ -1367,64 +1532,95 @@ app.post('/api/auth/login', (req, res) => {
 });
 
 app.get('/api/dashboard/resumen', (req, res) => {
-  const sqlVentas = `
-    SELECT 
-      COALESCE(SUM(CASE WHEN estado != 'cancelada' THEN total ELSE 0 END), 0) as totalVentas,
-      COALESCE(SUM(CASE WHEN estado != 'cancelada' AND metodo_pago IN ('efectivo', 'mixto') THEN monto_efectivo ELSE 0 END), 0) as totalEfectivoVentas,
-      COUNT(CASE WHEN estado != 'cancelada' THEN 1 END) as totalTickets,
-      COUNT(CASE WHEN estado = 'cancelada' THEN 1 END) as totalDevoluciones
-    FROM ventas
-    WHERE date(fecha_hora, 'localtime') = date('now', 'localtime')
-  `;
+  db.get('SELECT fecha_hora FROM cierres_globales ORDER BY id DESC LIMIT 1', [], (errUltimo, rowUltimo) => {
+    if (errUltimo) return res.status(500).json({ error: errUltimo.message });
 
-  db.get(sqlVentas, [], (err, rowVentas) => {
-    if (err) return res.status(500).json({ error: err.message });
+    const fechaHoy = getFechaLocal();
+    
+    const filtroDiaCompleto = "substr(fecha_hora, 1, 10) = ? AND estado != 'cancelada'";
 
-    const sqlMovs = `
+    let filtroEfectivoTurno = "substr(fecha_hora, 1, 10) = ? AND estado != 'cancelada'";
+    let filtroMovsTurno = "substr(fecha_hora, 1, 10) = ?";
+    let paramsTurno = [fechaHoy];
+
+    if (rowUltimo && rowUltimo.fecha_hora && rowUltimo.fecha_hora.startsWith(fechaHoy)) {
+      filtroEfectivoTurno = "fecha_hora > ? AND estado != 'cancelada'";
+      filtroMovsTurno = "fecha_hora > ?";
+      paramsTurno = [rowUltimo.fecha_hora];
+    }
+
+    const sqlMetricasDia = `
       SELECT 
-        COALESCE(SUM(CASE WHEN tipo = 'entrada' THEN monto ELSE 0 END), 0) as totalEntradas,
-        COALESCE(SUM(CASE WHEN tipo = 'salida' THEN monto ELSE 0 END), 0) as totalSalidas
-      FROM movimientos_caja
-      WHERE date(fecha_hora, 'localtime') = date('now', 'localtime')
+        COALESCE(SUM(total), 0) as totalVentas,
+        COUNT(CASE WHEN estado != 'cancelada' THEN 1 END) as totalTickets,
+        (SELECT COUNT(*) FROM ventas WHERE substr(fecha_hora, 1, 10) = ? AND estado = 'cancelada') as totalDevoluciones
+      FROM ventas
+      WHERE ${filtroDiaCompleto}
     `;
 
-    db.get(sqlMovs, [], (errMov, rowMovs) => {
-      if (errMov) return res.status(500).json({ error: errMov.message });
+    db.get(sqlMetricasDia, [fechaHoy, fechaHoy], (errV, rowDia) => {
+      if (errV) return res.status(500).json({ error: errV.message });
 
-      db.all(
-        `SELECT * FROM productos WHERE (invActual <= invMinimo OR invActual <= 5) AND esServicio = 0 AND noInventariado = 0 LIMIT 5`,
-        [],
-        (err2, rowsProd) => {
-          if (err2) return res.status(500).json({ error: err2.message });
+      const sqlEfectivoTurno = `
+        SELECT 
+          COALESCE(SUM(CASE WHEN metodo_pago IN ('efectivo', 'mixto') THEN monto_efectivo ELSE 0 END), 0) as totalEfectivoTurno
+        FROM ventas
+        WHERE ${filtroEfectivoTurno}
+      `;
 
-          db.all(`
-            SELECT d.nombre, COUNT(p.id) as totalProductos 
-            FROM departamentos d 
-            LEFT JOIN productos p ON d.id = p.departamento_id 
-            GROUP BY d.id 
-            ORDER BY totalProductos DESC
-          `, [], (errDept, rowsDept) => {
-            if (errDept) return res.status(500).json({ error: errDept.message });
+      db.get(sqlEfectivoTurno, paramsTurno, (errE, rowEf) => {
+        if (errE) return res.status(500).json({ error: errE.message });
 
-            const ventasDia = rowVentas?.totalVentas || 0;
-            const efectivoVentas = rowVentas?.totalEfectivoVentas || 0;
-            const totalEntradas = rowMovs?.totalEntradas || 0;
-            const totalSalidas = rowMovs?.totalSalidas || 0;
-            const dineroCaja = efectivoVentas + totalEntradas - totalSalidas;
+        const sqlMovs = `
+          SELECT 
+            COALESCE(SUM(CASE WHEN tipo = 'entrada' THEN monto ELSE 0 END), 0) as totalEntradas,
+            COALESCE(SUM(CASE WHEN tipo = 'salida' THEN monto ELSE 0 END), 0) as totalSalidas
+          FROM movimientos_caja
+          WHERE ${filtroMovsTurno}
+        `;
 
-            res.json({
-              ventasDia,
-              ticketsDia: rowVentas?.totalTickets || 0,
-              devoluciones: rowVentas?.totalDevoluciones || 0,
-              totalEntradas,
-              totalSalidas,
-              dineroCaja,
-              inventarioBajo: rowsProd,
-              departamentosResumen: rowsDept || []
-            });
-          });
-        }
-      );
+        db.get(sqlMovs, paramsTurno, (errMov, rowMovs) => {
+          if (errMov) return res.status(500).json({ error: errMov.message });
+
+          db.all(
+            `SELECT * FROM productos WHERE (invActual <= invMinimo OR invActual <= 5) AND esServicio = 0 AND noInventariado = 0 LIMIT 5`,
+            [],
+            (err2, rowsProd) => {
+              if (err2) return res.status(500).json({ error: err2.message });
+
+              db.all(`
+                SELECT d.nombre, COUNT(p.id) as totalProductos 
+                FROM departamentos d 
+                LEFT JOIN productos p ON d.id = p.departamento_id 
+                GROUP BY d.id 
+                ORDER BY totalProductos DESC
+              `, [], (errDept, rowsDept) => {
+                if (errDept) return res.status(500).json({ error: errDept.message });
+
+                const ventasDia = rowDia?.totalVentas || 0;
+                const totalTickets = rowDia?.totalTickets || 0;
+                const devoluciones = rowDia?.totalDevoluciones || 0;
+
+                const efectivoTurno = rowEf?.totalEfectivoTurno || 0;
+                const totalEntradas = rowMovs?.totalEntradas || 0;
+                const totalSalidas = rowMovs?.totalSalidas || 0;
+                const dineroCaja = efectivoTurno + totalEntradas - totalSalidas;
+
+                res.json({
+                  ventasDia,
+                  ticketsDia: totalTickets,
+                  devoluciones,
+                  totalEntradas,
+                  totalSalidas,
+                  dineroCaja,
+                  inventarioBajo: rowsProd,
+                  departamentosResumen: rowsDept || []
+                });
+              });
+            }
+          );
+        });
+      });
     });
   });
 });
@@ -1542,7 +1738,6 @@ app.delete('/api/reportes/resurtido/manual/:id', (req, res) => {
   });
 });
 
-// --- IMPORTACIÓN MASIVA ---
 app.post('/api/productos/importar-masivo', (req, res) => {
   const { productos } = req.body;
   if (!Array.isArray(productos) || productos.length === 0) return res.status(400).json({ error: 'No se recibieron productos.' });
@@ -1578,7 +1773,7 @@ app.post('/api/productos/importar-masivo', (req, res) => {
         p.costoPaquete || 0, p.piezasPorPaquete || 1, p.precioVentaPaquete || 0, p.notaPaquete || '',
         p.costo || 0, p.precioVenta || 0, p.ganancia || 0, p.invMinimo || 0, parseFloat(p.invActual) || 0,
         p.puntosLealtad || 0, p.esServicio ? 1 : 0, p.esKit ? 1 : 0, p.aGranel ? 1 : 0, p.noInventariado ? 1 : 0,
-        p.fechaCompra || new Date().toISOString().split('T')[0]
+        p.fechaCompra || getFechaLocal()
       ];
       stmt.run(params, (err) => { if (err) errores++; });
     }
@@ -1594,7 +1789,8 @@ app.post('/api/productos/importar-masivo', (req, res) => {
   });
 });
 
-// --- BACKUPS Y RESTAURACIÓN ---
+// --- GESTIÓN DE BASE DE DATOS Y RESPALDOS (CORREGIDO) ---
+
 app.get('/api/backup/estado', (req, res) => {
   try {
     const stats = fs.existsSync(RUTA_DB_ACTUAL) ? fs.statSync(RUTA_DB_ACTUAL) : null;
@@ -1633,7 +1829,7 @@ app.get('/api/backup/estado', (req, res) => {
           conteo: conteos || {},
           frecuencia: config.frecuencia_respaldo || 'diario',
           ultimoRespaldo: config.ultimo_respaldo || null,
-          respaldosLocales: archivosBackups.slice(0, 8)
+          respaldosLocales: archivosBackups.slice(0, 10)
         });
       });
     });
@@ -1642,18 +1838,28 @@ app.get('/api/backup/estado', (req, res) => {
   }
 });
 
+// Descarga directa sin riesgo de bloqueo por procesos de Windows
 app.get('/api/backup/descargar', (req, res) => {
   if (!fs.existsSync(RUTA_DB_ACTUAL)) {
     return res.status(404).send('Archivo de base de datos no encontrado.');
   }
 
-  const fechaStr = new Date().toISOString().split('T')[0];
+  const fechaStr = getFechaLocal();
   const nombreDescarga = `respaldo_asadel_${fechaStr}.db`;
+  const archivoTemp = path.join(os.tmpdir(), `temp_${Date.now()}_${nombreDescarga}`);
+  const archivoTempSql = archivoTemp.replace(/'/g, "''");
 
-  res.download(RUTA_DB_ACTUAL, nombreDescarga, (err) => {
-    if (!err) {
-      db.run(`UPDATE configuracion_respaldos SET valor = ? WHERE clave = 'ultimo_respaldo'`, [new Date().toISOString()]);
-    }
+  db.run(`VACUUM INTO '${archivoTempSql}'`, [], (err) => {
+    const archivoAEnviar = err ? RUTA_DB_ACTUAL : archivoTemp;
+
+    res.download(archivoAEnviar, nombreDescarga, (errDownload) => {
+      if (fs.existsSync(archivoTemp)) {
+        try { fs.unlinkSync(archivoTemp); } catch (e) {}
+      }
+      if (!errDownload) {
+        db.run(`UPDATE configuracion_respaldos SET valor = ? WHERE clave = 'ultimo_respaldo'`, [getFechaHoraLocal()]);
+      }
+    });
   });
 });
 
@@ -1671,8 +1877,10 @@ app.post('/api/backup/configuracion', (req, res) => {
 });
 
 app.post('/api/backup/generar-manual', (req, res) => {
-  ejecutarRespaldoEnDisco();
-  res.json({ mensaje: 'Copia de seguridad guardada en el equipo.' });
+  ejecutarRespaldoEnDisco((err) => {
+    if (err) return res.status(500).json({ error: 'No se pudo generar la copia en disco.' });
+    res.json({ mensaje: 'Copia de seguridad guardada exitosamente en el equipo.' });
+  });
 });
 
 app.post('/api/backup/optimizar', (req, res) => {
@@ -1682,39 +1890,117 @@ app.post('/api/backup/optimizar', (req, res) => {
   });
 });
 
+app.post('/api/backup/borrar-db', (req, res) => {
+  const { password } = req.body;
+  db.get(`SELECT id FROM usuarios WHERE rol = 'admin' AND password = ?`, [password], (err, row) => {
+    if (err) return res.status(500).json({ error: err.message });
+    if (!row) return res.status(401).json({ error: 'Contraseña de administrador incorrecta.' });
+
+    db.serialize(() => {
+      db.run('BEGIN TRANSACTION');
+
+      const tablas = [
+        'detalle_ventas', 'ventas', 'movimientos_caja', 'cortes_caja',
+        'cierres_globales', 'kit_detalles', 'kits', 'historial_costos',
+        'compras_manuales', 'clientes', 'productos', 'categorias',
+        'departamentos', 'proveedores', 'promociones', 'usuarios', 'empresa_datos'
+      ];
+
+      tablas.forEach((t) => {
+        db.run(`DELETE FROM ${t}`);
+      });
+
+      db.run(`DELETE FROM sqlite_sequence`);
+
+      db.run(`
+        INSERT INTO empresa_datos (id, nombre, sucursal, direccion, telefono, mensaje_ticket, imprimir_ticket_auto)
+        VALUES (1, 'PAPELERÍA ASADEL', 'Sucursal Centro', 'Av. Principal #123, Col. Centro', '55 1234 5678', '¡Gracias por su compra y preferencia!', 1)
+      `);
+
+      db.run(`
+        INSERT INTO usuarios (usuario, nombre, password, rol, activo)
+        VALUES ('admin', 'Administrador Principal', 'admin123', 'admin', 1)
+      `);
+
+      db.run(`
+        INSERT INTO usuarios (usuario, nombre, password, rol, activo)
+        VALUES ('turno1', 'Cajero Turno 1', 'caja123', 'cajero', 1)
+      `);
+
+      db.run('COMMIT', (errCommit) => {
+        if (errCommit) {
+          db.run('ROLLBACK');
+          return res.status(500).json({ error: 'Error al restablecer las tablas.' });
+        }
+        res.json({ mensaje: 'Base de datos restablecida de fábrica exitosamente.' });
+      });
+    });
+  });
+});
+
+// Restauración sin bloqueos de archivo ni fugas temporales en Windows
 app.post('/api/backup/restaurar', (req, res) => {
   const { archivoBase64 } = req.body;
   if (!archivoBase64) return res.status(400).json({ error: 'No se recibió el archivo de respaldo.' });
 
   try {
-    const base64Data = archivoBase64.replace(/^data:application\/octet-stream;base64,/, '').replace(/^data:.*;base64,/, '');
-    const buffer = Buffer.from(base64Data, 'base64');
+    const base64Limpio = archivoBase64.replace(/^data:.*?;base64,/, '');
+    const buffer = Buffer.from(base64Limpio, 'base64');
 
-    // 1. Cerramos la conexión actual para que SQLite suelte el archivo
     db.close((errClose) => {
-      if (errClose) console.error('Error al cerrar DB:', errClose);
+      if (errClose) console.warn('Advertencia al cerrar SQLite previo a restaurar:', errClose.message);
 
-      // 2. Sobrescribimos el archivo físicamente con tu respaldo
-      fs.writeFileSync(RUTA_DB_ACTUAL, buffer);
+      try {
+        const walPath = `${RUTA_DB_ACTUAL}-wal`;
+        const shmPath = `${RUTA_DB_ACTUAL}-shm`;
+        if (fs.existsSync(walPath)) try { fs.unlinkSync(walPath); } catch (e) {}
+        if (fs.existsSync(shmPath)) try { fs.unlinkSync(shmPath); } catch (e) {}
 
-      // 3. RECONEXIÓN EN CALIENTE: Volvemos a abrir la base sin apagar Node
-      db = new sqlite3.Database(RUTA_DB_ACTUAL, (errOpen) => {
-        if (errOpen) {
-          console.error('Error al reabrir la base de datos:', errOpen);
-          return res.status(500).json({ error: 'Error al reconectar la base de datos nueva.' });
-        }
-        
-        console.log('✅ Base de datos restaurada y reconectada en caliente.');
-        // 4. Le avisamos a React que todo salió perfecto
-        res.json({ mensaje: 'Base de datos restaurada con éxito.' });
-      });
+        fs.writeFileSync(RUTA_DB_ACTUAL, buffer);
+
+        db = new sqlite3.Database(RUTA_DB_ACTUAL, (errOpen) => {
+          if (errOpen) {
+            console.error('Error al reconectar la base de datos:', errOpen);
+            return res.status(500).json({ error: 'Error al reconectar la base de datos restaurada.' });
+          }
+
+          console.log('✅ Base de datos restaurada y reconectada con éxito.');
+          db.get('PRAGMA integrity_check', [], (errCheck, rowCheck) => {
+            if (errCheck || !rowCheck || rowCheck.integrity_check !== 'ok') {
+              console.warn('Advertencia de integridad tras restauración:', rowCheck);
+            }
+            res.json({ mensaje: 'Base de datos restaurada con éxito.' });
+          });
+        });
+      } catch (writeErr) {
+        console.error('Error al escribir el archivo restaurado en disco:', writeErr);
+        db = new sqlite3.Database(RUTA_DB_ACTUAL);
+        return res.status(500).json({ error: 'No se pudo reemplazar el archivo de base de datos en Windows (recurso en uso).' });
+      }
     });
   } catch (err) {
-    res.status(500).json({ error: 'Error al procesar la restauración del archivo.' });
+    console.error('Error al procesar el buffer base64:', err);
+    res.status(500).json({ error: 'El archivo de respaldo está dañado o no es válido.' });
+  }
+});
+
+// Endpoint para apagar el servidor limpiamente cuando se cierra la app
+app.post('/api/sistema/apagar', (req, res) => {
+  res.json({ mensaje: 'Cerrando servidor...' });
+
+  // Cerrar la base de datos de forma segura
+  if (db) {
+    db.close((err) => {
+      if (err) console.error('Error al cerrar DB al apagar:', err);
+      else console.log('🛑 Base de datos cerrada correctamente.');
+      process.exit(0);
+    });
+  } else {
+    process.exit(0);
   }
 });
 
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
   console.log(`🚀 Servidor corriendo en el puerto ${PORT}`);
-}); 
+});

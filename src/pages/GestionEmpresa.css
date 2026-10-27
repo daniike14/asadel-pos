@@ -75,10 +75,9 @@
   overflow: hidden;
 }
 
-/* AQUÍ LIMITAMOS ESTRICTAMENTE LA ALTURA DE LA IMAGEN EN PC */
 .emp-logo-box img {
   max-width: 100%;
-  max-height: 160px; 
+  max-height: 160px; /* Limit image height to ensure it fits the box */
   object-fit: contain;
   border-radius: 4px;
 }
@@ -125,6 +124,44 @@
 
 .badge-rol.admin { background-color: #fef3c7; color: #b45309; }
 .badge-rol.cajero { background-color: #e0f2fe; color: #0284c7; }
+
+
+/* =========================================================
+   MÓDULO DE PERMISOS (ALINEACIÓN REPARADA)
+   ========================================================= */
+.permisos-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  width: 100%;
+}
+
+.permiso-label {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  justify-content: flex-start;
+  gap: 8px;
+  font-size: 13px;
+  color: #334155;
+  cursor: pointer;
+  text-align: left;
+  margin: 0;
+  width: 100%;
+}
+
+.permiso-label input[type="checkbox"] {
+  width: 16px !important;
+  height: 16px !important;
+  margin: 2px 0 0 0 !important;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+.permiso-label span {
+  line-height: 1.3;
+  flex: 1;
+}
 
 /* =========================================================
    ADAPTACIÓN RESPONSIVA NATIVA (DISEÑO TIPO TARJETAS MÓVILES)
@@ -212,7 +249,6 @@
     gap: 16px;
   }
 
-  /* Y AQUÍ TAMBIÉN RESTRINGIMOS CÓMO SE COMPORTA EN CELULAR */
   .emp-logo-box {
     height: 140px;
     max-height: 140px;
@@ -249,6 +285,16 @@
     height: 44px;
     font-size: 14px;
     border-radius: 6px;
+  }
+
+  /* REGLA MÓVIL PARA LOS PERMISOS (Pasan a 1 sola columna) */
+  .permisos-grid {
+    grid-template-columns: 1fr; 
+    gap: 10px;
+  }
+  .permiso-label {
+    font-size: 14px;
+    padding: 4px 0;
   }
 
   /* 4. Transformación de Tabla de Usuarios a Tarjetas */

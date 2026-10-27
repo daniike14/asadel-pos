@@ -8,14 +8,7 @@ export default function GestionEmpresa({ volverAlDashboard }) {
 
   // Datos de la Empresa
   const [datosEmpresa, setDatosEmpresa] = useState({
-    nombre: '',
-    sucursal: '',
-    direccion: '',
-    telefono: '',
-    mensaje_ticket: '',
-    logo: '',
-    imprimir_ticket_auto: true,
-    max_resultados_busqueda: 8
+    nombre: '', sucursal: '', direccion: '', telefono: '', mensaje_ticket: '', logo: '', imprimir_ticket_auto: true, max_resultados_busqueda: 8
   });
 
   // Lista de Usuarios
@@ -25,12 +18,28 @@ export default function GestionEmpresa({ volverAlDashboard }) {
 
   // Formulario Usuario
   const [formUser, setFormUser] = useState({
-    usuario: '',
-    nombre: '',
-    password: '',
-    rol: 'cajero',
-    activo: true
+    usuario: '', nombre: '', password: '', rol: 'cajero', activo: true, permisos: []
   });
+
+  const PERMISOS_DISPONIBLES = [
+    { id: 'ventas', label: 'Ventas y Cobro' },
+    { id: 'productos', label: 'Gestionar Productos' },
+    { id: 'reportes', label: 'Ver Reportes y Cortes' },
+    { id: 'clientes', label: 'Gestionar Clientes' },
+    { id: 'empresa', label: 'Configuración de Empresa' },
+    { id: 'basedatos', label: 'Respaldos Base de Datos' }
+  ];
+
+  const handleTogglePermiso = (permisoId) => {
+    setFormUser((prev) => {
+      const tienePermiso = prev.permisos.includes(permisoId);
+      if (tienePermiso) {
+        return { ...prev, permisos: prev.permisos.filter(p => p !== permisoId) };
+      } else {
+        return { ...prev, permisos: [...prev.permisos, permisoId] };
+      }
+    });
+  };
 
   const cargarDatos = async () => {
     try {
@@ -56,6 +65,19 @@ export default function GestionEmpresa({ volverAlDashboard }) {
     }
   };
 
+  const [logoEmpresa, setLogoEmpresa] = useState(logoDefault);
+  useEffect(() => {
+    const logoActual = localStorage.getItem('asadel_logo_temp');
+    if (logoActual) setLogoEmpresa(logoActual);
+    
+    const escucharCambioEmpresa = () => {
+      const logoNuevo = localStorage.getItem('asadel_logo_temp');
+      if (logoNuevo) setLogoEmpresa(logoNuevo);
+    };
+    window.addEventListener('empresa-actualizada', escucharCambioEmpresa);
+    return () => window.removeEventListener('empresa-actualizada', escucharCambioEmpresa);
+  }, []);
+
   useEffect(() => {
     cargarDatos();
   }, []);
@@ -73,8 +95,8 @@ export default function GestionEmpresa({ volverAlDashboard }) {
 
   const guardarDatosEmpresa = async (e) => {
     e.preventDefault();
-
-    // Guardamos el límite de búsqueda localmente
+    
+    // Guardamos el límite de búsqueda localmente para evitar depender de si la BD tiene esa columna o no
     localStorage.setItem('asadel_max_search', datosEmpresa.max_resultados_busqueda);
 
     try {
@@ -85,15 +107,10 @@ export default function GestionEmpresa({ volverAlDashboard }) {
       });
 
       if (res.ok) {
-        // --- NUEVO: AVISAR AL SISTEMA Y GUARDAR EN MEMORIA ---
-        // Guardamos el logo en local temporalmente para que App.tsx lo lea rápido
         if (datosEmpresa.logo) {
           localStorage.setItem('asadel_logo_temp', datosEmpresa.logo);
         }
-        // Disparamos un evento personalizado para que las otras pantallas se den cuenta
         window.dispatchEvent(new Event('empresa-actualizada'));
-        // ---------------------------------------------------
-
         alert('✅ ¡Datos y configuración de la empresa guardados correctamente!');
       } else {
         alert('Error al guardar datos de la empresa.');
@@ -104,19 +121,36 @@ export default function GestionEmpresa({ volverAlDashboard }) {
   };
 
   const abrirModalNuevo = () => {
-    setFormUser({ usuario: '', nombre: '', password: '', rol: 'cajero', activo: true });
+    setFormUser({ usuario: '', nombre: '', password: '', rol: 'cajero', activo: true, permisos: ['ventas'] });
     setUsuarioEditando(null);
     setModalUsuario('nuevo');
   };
 
   const abrirModalEditar = (u) => {
     setUsuarioEditando(u);
+    
+    let permisosArray = [];
+    if (u.permisos && typeof u.permisos === 'string') {
+      permisosArray = u.permisos.split(',');
+    } else if (Array.isArray(u.permisos)) {
+      permisosArray = u.permisos;
+    } else {
+      // Valor por defecto si no hay nada guardado
+      const localPermisos = localStorage.getItem(`permisos_user_${u.usuario}`);
+      if (localPermisos) {
+        permisosArray = JSON.parse(localPermisos);
+      } else {
+        permisosArray = u.rol === 'admin' ? PERMISOS_DISPONIBLES.map(p => p.id) : ['ventas'];
+      }
+    }
+
     setFormUser({
       usuario: u.usuario,
       nombre: u.nombre,
       password: '', // En blanco si no se cambia
       rol: u.rol,
-      activo: Boolean(u.activo)
+      activo: Boolean(u.activo),
+      permisos: permisosArray
     });
     setModalUsuario('editar');
   };
@@ -135,6 +169,9 @@ export default function GestionEmpresa({ volverAlDashboard }) {
       });
 
       if (res.ok) {
+        // --- AQUÍ ESTÁ LA SOLUCIÓN: GUARDAR LOS PERMISOS EN LA MEMORIA ---
+        localStorage.setItem(`permisos_user_${formUser.usuario}`, JSON.stringify(formUser.permisos));
+        
         alert(`✅ Usuario ${esEdicion ? 'actualizado' : 'creado'} exitosamente.`);
         setModalUsuario(null);
         cargarDatos();
@@ -152,6 +189,7 @@ export default function GestionEmpresa({ volverAlDashboard }) {
     try {
       const res = await fetch(`${API_URL}/api/usuarios/${u.id}`, { method: 'DELETE' });
       if (res.ok) {
+        localStorage.removeItem(`permisos_user_${u.usuario}`);
         alert('Usuario eliminado.');
         cargarDatos();
       } else {
@@ -168,7 +206,7 @@ export default function GestionEmpresa({ volverAlDashboard }) {
       {/* Encabezado */}
       <header className="emp-header">
         <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-          <img src={datosEmpresa.logo || logoDefault} alt="Logo" style={{ height: '32px' }} />
+          <img src={logoEmpresa} alt="Logo" style={{ height: '32px' }} />
           <h2 style={{ margin: 0, fontSize: '16px' }}>CONFIGURACIÓN DEL NEGOCIO Y ACCESOS</h2>
         </div>
 
@@ -413,12 +451,42 @@ export default function GestionEmpresa({ volverAlDashboard }) {
                 <label>Rol en el Sistema:</label>
                 <select
                   value={formUser.rol}
-                  onChange={(e) => setFormUser({ ...formUser, rol: e.target.value })}
+                  onChange={(e) => {
+                    const nuevoRol = e.target.value;
+                    // Si cambia a admin, le damos todos los permisos por defecto
+                    const nuevosPermisos = nuevoRol === 'admin' 
+                      ? PERMISOS_DISPONIBLES.map(p => p.id) 
+                      : ['ventas'];
+                    setFormUser({ ...formUser, rol: nuevoRol, permisos: nuevosPermisos });
+                  }}
                   disabled={usuarioEditando?.id === 1}
                 >
                   <option value="cajero">Cajero / Mostrador</option>
                   <option value="admin">Administrador (Acceso Total)</option>
                 </select>
+              </div>
+
+              {/* MÓDULO DE PERMISOS */}
+              <div className="field-group" style={{ backgroundColor: '#f8fafc', padding: '12px', borderRadius: '6px', border: '1px solid #e2e8f0', marginTop: '4px' }}>
+                <label style={{ marginBottom: '10px', display: 'block', color: '#0f172a', fontWeight: 'bold' }}>Permisos de Acceso:</label>
+                <div className="permisos-grid">
+                  {PERMISOS_DISPONIBLES.map((permiso) => (
+                    <label key={permiso.id} className="permiso-label">
+                      <input
+                        type="checkbox"
+                        checked={formUser.rol === 'admin' ? true : formUser.permisos.includes(permiso.id)}
+                        onChange={() => handleTogglePermiso(permiso.id)}
+                        disabled={formUser.rol === 'admin' || usuarioEditando?.id === 1}
+                      />
+                      <span>{permiso.label}</span>
+                    </label>
+                  ))}
+                </div>
+                {formUser.rol === 'admin' && (
+                  <small style={{ display: 'block', marginTop: '8px', color: '#16a34a', fontSize: '11px', fontStyle: 'italic' }}>
+                    * Los administradores tienen acceso total por defecto.
+                  </small>
+                )}
               </div>
 
               {modalUsuario === 'editar' && usuarioEditando?.id !== 1 && (

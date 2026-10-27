@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import logoAsadel from '../assets/Logo.jpg';
+import React, { useState, useEffect } from 'react';
+import logoDefault from '../assets/Logo.jpg';
 import './Login.css';
 import { API_URL } from '../config';
 
@@ -8,6 +8,31 @@ export default function Login({ alIniciarSesion }) {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [cargando, setCargando] = useState(false);
+
+  // Estado para el logo dinámico
+  const [logoEmpresa, setLogoEmpresa] = useState(() => {
+    const logoGuardado = localStorage.getItem('asadel_logo_temp');
+    return logoGuardado || logoDefault;
+  });
+
+  useEffect(() => {
+    // Pedimos el logo a la base de datos al cargar la pantalla de login por si se borró la memoria local
+    const cargarLogoInicial = async () => {
+      try {
+        const res = await fetch(`${API_URL}/api/empresa`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data.logo) {
+            setLogoEmpresa(data.logo);
+            localStorage.setItem('asadel_logo_temp', data.logo);
+          }
+        }
+      } catch (e) {
+        console.error('Error al cargar el logo en el login:', e);
+      }
+    };
+    cargarLogoInicial();
+  }, []);
 
   const manejarSubmit = async (e) => {
     e.preventDefault();
@@ -39,7 +64,7 @@ export default function Login({ alIniciarSesion }) {
     <div className="login-wrapper">
       <div className="login-card">
         <div className="login-brand">
-          <img src={logoAsadel} alt="Logo ASADEL" className="login-logo" />
+          <img src={logoEmpresa} alt="Logo ASADEL" className="login-logo" />
           <h2>CONTROL DE ACCESO</h2>
           <p>Punto de Venta y Administración</p>
         </div>
@@ -74,10 +99,6 @@ export default function Login({ alIniciarSesion }) {
             {cargando ? 'Ingresando...' : 'Iniciar Sesión'}
           </button>
         </form>
-
-        <div className="login-footer-hint">
-          Cuentas demo: <code>admin / admin123</code> ó <code>turno1 / caja123</code>
-        </div>
       </div>
     </div>
   );
