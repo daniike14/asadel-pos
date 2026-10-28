@@ -7,6 +7,7 @@ import ReportesHistorial from "./pages/ReportesHistorial";
 import GestionClientes from "./pages/GestionClientes";
 import GestionEmpresa from "./pages/GestionEmpresa";
 import GestionBaseDatos from "./pages/GestionBaseDatos";
+import ModalImpresiones from "./impresiones/ModalImpresiones";
 import Login from "./pages/Login";
 import SplashScreen from "./pages/SplashScreen";
 import logoAsadel from "./assets/Logo.jpg";
@@ -22,10 +23,102 @@ interface UsuarioSesion {
   permisos?: string[];
 }
 
+function VisorImpresionVentana() {
+  const urlPdf = `${API_URL}/api/impresiones/ver-pdf-temporal`;
+
+  const forzarCierre = async () => {
+    try {
+      const { getCurrentWindow } = await import('@tauri-apps/api/window');
+      const win = getCurrentWindow();
+      await win.destroy();
+    } catch {
+      window.close();
+    }
+  };
+
+  const mandarAImprimirDirecto = () => {
+    const embedEl = document.getElementById('visor-pdf-nativo');
+    if (embedEl) {
+      try {
+        // En WebView2 de Windows, print() directo sobre el embed abre el diálogo nativo
+        embedEl.print();
+        return;
+      } catch (e) {
+        console.warn("Intento de print sobre embed falló, probando foco:", e);
+      }
+    }
+
+    // Fallback: enfocar y llamar print global
+    window.focus();
+    window.print();
+  };
+
+  return (
+    <div style={{ width: '100vw', height: '100vh', display: 'flex', flexDirection: 'column', backgroundColor: '#0f172a' }}>
+      <header style={{ height: '50px', minHeight: '50px', backgroundColor: '#1e293b', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 16px', color: '#fff', borderBottom: '1px solid #334155' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 'bold', fontSize: '14px' }}>
+          <span>📄</span>
+          <span>Vista Previa de Impresión - Papelería Asadel</span>
+        </div>
+        <div style={{ display: 'flex', gap: '10px' }}>
+          <button
+            type="button"
+            onClick={mandarAImprimirDirecto}
+            style={{ 
+              backgroundColor: '#16a34a', 
+              color: '#fff', 
+              border: 'none', 
+              padding: '8px 18px', 
+              borderRadius: '6px', 
+              fontWeight: 'bold', 
+              cursor: 'pointer', 
+              fontSize: '13px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
+            }}
+          >
+            🖨️ Mandar a Imprimir
+          </button>
+          <button
+            type="button"
+            onClick={forzarCierre}
+            style={{ 
+              backgroundColor: '#dc2626', 
+              color: '#fff', 
+              border: 'none', 
+              padding: '8px 14px', 
+              borderRadius: '6px', 
+              fontWeight: 'bold', 
+              cursor: 'pointer', 
+              fontSize: '13px' 
+            }}
+          >
+            ✕ Cerrar Ventana
+          </button>
+        </div>
+      </header>
+      
+      {/* Usamos <embed> en lugar de <iframe> para que responda a comandos directos y teclado */}
+      <embed
+        id="visor-pdf-nativo"
+        src={urlPdf}
+        type="application/pdf"
+        style={{ flex: 1, width: '100%', height: 'calc(100vh - 50px)', border: 'none' }}
+      />
+    </div>
+  );
+}
+
 function App() {
-  // Estado para la pantalla de carga inicial (Splash Screen)
+  // 1. EVALUAR PRIMERO: Si es visor de impresión, NO ejecutar nada del POS ni interceptar la "X"
+  if (window.location.search.includes('modo=visor_impresion') || window.location.hash.includes('visor_impresion')) {
+    return <VisorImpresionVentana />;
+  }
+
+  // A partir de aquí sigue el código normal de tu punto de venta...
   const [iniciandoApp, setIniciandoApp] = useState<boolean>(true);
-  // Estado para el modal de salida sin bloquear el hilo de Tauri
   const [mostrarModalSalir, setMostrarModalSalir] = useState<boolean>(false);
 
   useEffect(() => {
@@ -36,7 +129,7 @@ function App() {
     return () => clearTimeout(timer);
   }, []);
 
-  // Interceptar el clic en la "X" de Windows limpiamente a la primera
+  // Interceptar la "X" de Windows limpiamente a la primera
   useEffect(() => {
     let unlistenFn: (() => void) | null = null;
 
@@ -66,7 +159,6 @@ function App() {
   const confirmarSalidaApp = async () => {
     sessionStorage.removeItem('asadel_usuario_sesion');
 
-    // 1. Notificar a Node.js que apague el servidor y libere el puerto
     try {
       fetch(`${API_URL}/api/sistema/apagar`, {
         method: 'POST',
@@ -75,7 +167,6 @@ function App() {
       }).catch(() => {});
     } catch (e) {}
 
-    // 2. Destruir la ventana de Tauri de inmediato al primer clic
     try {
       if (window.__TAURI_INTERNALS__ || window.__TAURI__) {
         const { getCurrentWindow } = await import('@tauri-apps/api/window');
@@ -99,8 +190,8 @@ function App() {
         usuario.permisos = JSON.parse(permisosStr);
     } else {
         usuario.permisos = usuario.rol === 'admin' 
-            ? ['dashboard', 'ventas', 'productos', 'reportes', 'empresa', 'clientes', 'basedatos'] 
-            : ['ventas'];
+            ? ['dashboard', 'ventas', 'productos', 'reportes', 'impresiones', 'empresa', 'clientes', 'basedatos'] 
+            : ['ventas', 'impresiones'];
     }
     return usuario;
   });
@@ -152,8 +243,8 @@ function App() {
         user.permisos = JSON.parse(permisosStr);
     } else {
         user.permisos = user.rol === 'admin' 
-            ? ['dashboard', 'ventas', 'productos', 'reportes', 'empresa', 'clientes', 'basedatos'] 
-            : ['ventas'];
+            ? ['dashboard', 'ventas', 'productos', 'reportes', 'impresiones', 'empresa', 'clientes', 'basedatos'] 
+            : ['ventas', 'impresiones'];
     }
     
     setUsuarioActual(user);
@@ -176,9 +267,13 @@ function App() {
     setMenuMovilAbierto(false); 
   };
 
+  // Si la ventana fue abierta como visor de impresión dedicado
+  if (window.location.search.includes('modo=visor_impresion') || window.location.hash.includes('visor_impresion')) {
+    return <VisorImpresionVentana />;
+  }
+
   return (
     <>
-      {/* PANTALLA DE CARGA PROFESIONAL */}
       <SplashScreen cargando={iniciandoApp} logo={logoEmpresa} />
 
       {!usuarioActual ? (
@@ -275,12 +370,23 @@ function App() {
                 </button>
               )}
 
+              {/* MÓDULO ANTES DE EMPRESA */}
+              {(usuarioActual.rol === 'admin' || (usuarioActual.permisos || []).includes('impresiones')) && (
+                <button
+                  className={moduloActivo === "impresiones" ? "active" : ""}
+                  style={{ borderLeft: moduloActivo === "impresiones" ? "4px solid #8b5cf6" : "none" }}
+                  onClick={() => seleccionarModulo("impresiones")}
+                >
+                  4. IMPRESIONES / COLOR
+                </button>
+              )}
+
               {(usuarioActual.rol === 'admin' || (usuarioActual.permisos || []).includes('empresa')) && (
                 <button
                   className={moduloActivo === "empresa" ? "active" : ""}
                   onClick={() => seleccionarModulo("empresa")}
                 >
-                  4. EMPRESA
+                  5. EMPRESA
                 </button>
               )}
 
@@ -289,7 +395,7 @@ function App() {
                   className={`nav-btn ${moduloActivo === 'clientes' ? 'active' : ''}`}
                   onClick={() => seleccionarModulo('clientes')}
                 >
-                  5. CLIENTES Y LEALTAD
+                  6. CLIENTES Y LEALTAD
                 </button>
               )}
 
@@ -298,7 +404,7 @@ function App() {
                   className={moduloActivo === "basedatos" ? "active" : ""}
                   onClick={() => seleccionarModulo("basedatos")}
                 >
-                  6. BASE DE DATOS
+                  7. BASE DE DATOS
                 </button>
               )}
             </nav>
@@ -334,6 +440,10 @@ function App() {
             {moduloActivo === "reportes" && (usuarioActual.rol === 'admin' || (usuarioActual.permisos || []).includes('reportes')) && (
               <ReportesHistorial volverAlDashboard={() => seleccionarModulo("dashboard")} />
             )}
+            {/* VISTA COMPLETA DE IMPRESIONES */}
+            {moduloActivo === "impresiones" && (usuarioActual.rol === 'admin' || (usuarioActual.permisos || []).includes('impresiones')) && (
+              <ModalImpresiones irAVentas={() => seleccionarModulo("caja")} />
+            )}
             {moduloActivo === "empresa" && (usuarioActual.rol === 'admin' || (usuarioActual.permisos || []).includes('empresa')) && (
               <GestionEmpresa volverAlDashboard={() => seleccionarModulo("dashboard")} />
             )}
@@ -347,7 +457,7 @@ function App() {
         </div>
       )}
 
-      {/* MODAL LIMPIO DE CONFIRMACIÓN DE SALIDA (SIN CONGELAR TAURI) */}
+      {/* MODAL LIMPIO DE CONFIRMACIÓN DE SALIDA */}
       {mostrarModalSalir && (
         <div 
           style={{

@@ -123,6 +123,20 @@ export default function PuntoDeVenta() {
   const [billetesPendiente, setBilletesPendiente] = useState('');
   const [morrallaPendiente, setMorrallaPendiente] = useState('');
 
+// Recargar el carrito desde localStorage y sincronizar al recibir evento de impresiones
+  useEffect(() => {
+    const sincronizarCarrito = () => {
+      const carritoGuardado = localStorage.getItem('asadel_carrito_temporal');
+      if (carritoGuardado) {
+        setCarrito(JSON.parse(carritoGuardado));
+      }
+    };
+
+    sincronizarCarrito();
+    window.addEventListener('asadel-actualizar-carrito', sincronizarCarrito);
+    return () => window.removeEventListener('asadel-actualizar-carrito', sincronizarCarrito);
+  }, []);
+
   useEffect(() => {
     const verificarEstadoCaja = async () => {
       try {
@@ -302,12 +316,15 @@ export default function PuntoDeVenta() {
             esVentaPaquete: false
           });
 
+          // Si tiene más de 1 unidad/metro por rollo y tiene precio de paquete o es venta general
           if (piezasPorPaq > 1 && !p.esServicio && !p.noInventariado) {
             const stockPaquetes = Math.floor(stockPiezas / piezasPorPaq);
+            const etiquetaRollo = p.aGranel ? `ROLLO de ${piezasPorPaq} mts` : `PAQUETE de ${piezasPorPaq} pzs`;
+
             itemsCombinados.push({
               ...p,
               id_busqueda: `PKG_${p.id}`,
-              nombre: `📦 [PAQUETE de ${piezasPorPaq} pzs] ${p.nombre}`,
+              nombre: `📦 [${etiquetaRollo}] ${p.nombre}`,
               codigo: p.codigoBarras ? `${p.codigoBarras}-PQ` : '',
               precioUnitario: precioPaq,
               ubicacion: p.locacion || 'N/A',
@@ -317,7 +334,7 @@ export default function PuntoDeVenta() {
               piezasPorPaquete: piezasPorPaq,
               imagenLocacion: p.imagenLocacion || '',
               puntosLealtad: (parseInt(p.puntosLealtad) || 0) * piezasPorPaq,
-              aGranel: false,
+              aGranel: false, // El rollo completo se vende como pieza unitaria
               esServicio: false,
               noInventariado: false,
               insumo_producto_id: null,

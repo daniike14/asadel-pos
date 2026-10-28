@@ -374,6 +374,61 @@ const inicializarBaseDeDatos = () => {
         }
       });
     });
+
+    db.run(`
+      CREATE TABLE IF NOT EXISTS configuracion_impresiones (
+        clave TEXT PRIMARY KEY,
+        valor TEXT NOT NULL
+      )
+    `, () => {
+      db.get('SELECT COUNT(*) as count FROM configuracion_impresiones', (err, row) => {
+        if (row && row.count === 0) {
+          const stmt = db.prepare('INSERT INTO configuracion_impresiones (clave, valor) VALUES (?, ?)');
+          stmt.run('precio_bn', '1.0');
+          stmt.run('precio_color_leve', '2.5');
+          stmt.run('precio_color_completo', '5.0');
+          stmt.run('umbral_bn_max', '1.0');
+          stmt.run('umbral_leve_max', '25.0');
+          stmt.run('insumo_producto_id', ''); // <-- NUEVO
+          stmt.run('insumo_cantidad', '1');
+          stmt.finalize();
+        }
+      });
+    });
+
+    db.run(`
+      CREATE TABLE IF NOT EXISTS reglas_tarifas_impresion (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        tipo TEXT NOT NULL,
+        nombre TEXT NOT NULL,
+        hasta_porcentaje REAL NOT NULL,
+        precio REAL NOT NULL
+      )
+    `, () => {
+      db.get('SELECT COUNT(*) as count FROM reglas_tarifas_impresion', (err, row) => {
+        if (row && row.count === 0) {
+          const stmt = db.prepare('INSERT INTO reglas_tarifas_impresion (tipo, nombre, hasta_porcentaje, precio) VALUES (?, ?, ?, ?)');
+          // Reglas de tipo Negro de CyberPlanet
+          stmt.run('negro', 'Texto', 21.0, 2.0);
+          stmt.run('negro', 'Texto/Foto', 50.0, 2.0);
+          stmt.run('negro', 'Foto Grande', 80.0, 3.0);
+          stmt.run('negro', 'Pleno', 100.0, 3.0);
+
+          // Reglas de tipo Color de CyberPlanet
+          stmt.run('color', 'Texto Color1', 4.0, 2.0);
+          stmt.run('color', 'Texto Color2', 4.6, 3.0);
+          stmt.run('color', 'Texto Color3', 18.0, 3.0);
+          stmt.run('color', 'Texto Color4', 20.0, 4.0);
+          stmt.run('color', 'Texto Color5', 25.0, 5.0);
+          stmt.run('color', 'Texto Color6', 35.0, 5.0);
+          stmt.run('color', 'Texto Color40', 40.0, 6.0);
+          stmt.run('color', 'Color50', 50.0, 7.0);
+          stmt.run('color', 'Pleno Color', 100.0, 10.0);
+          stmt.finalize();
+        }
+      });
+    });
+
   });
 };
 
@@ -1400,6 +1455,50 @@ app.get('/api/clientes/:id/historial', (req, res) => {
   });
 });
 
+app.get('/api/configuracion/impresiones', (req, res) => {
+  db.all('SELECT * FROM configuracion_impresiones', [], (err, rows) => {
+    if (err) return res.status(500).json({ error: err.message });
+    const config = {};
+    if (rows) rows.forEach((r) => { config[r.clave] = r.valor; });
+    res.json({
+      precio_bn: config.precio_bn !== undefined ? parseFloat(config.precio_bn) : 1.0,
+      precio_color_leve: config.precio_color_leve !== undefined ? parseFloat(config.precio_color_leve) : 2.5,
+      precio_color_completo: config.precio_color_completo !== undefined ? parseFloat(config.precio_color_completo) : 5.0,
+      umbral_bn_max: config.umbral_bn_max !== undefined ? parseFloat(config.umbral_bn_max) : 1.0,
+      umbral_leve_max: config.umbral_leve_max !== undefined ? parseFloat(config.umbral_leve_max) : 25.0,
+      insumo_producto_id: config.insumo_producto_id ? parseInt(config.insumo_producto_id, 10) : null,
+      insumo_cantidad: config.insumo_cantidad !== undefined ? parseFloat(config.insumo_cantidad) : 1
+    });
+  });
+});
+
+app.post('/api/configuracion/impresiones', (req, res) => {
+  const { 
+    precio_bn, precio_color_leve, precio_color_completo, 
+    umbral_bn_max, umbral_leve_max,
+    insumo_producto_id, insumo_cantidad 
+  } = req.body;
+
+  const sql = `
+    INSERT INTO configuracion_impresiones (clave, valor)
+    VALUES (?, ?)
+    ON CONFLICT(clave) DO UPDATE SET valor = excluded.valor
+  `;
+
+  db.serialize(() => {
+    const stmt = db.prepare(sql);
+    if (precio_bn !== undefined) stmt.run('precio_bn', String(precio_bn));
+    if (precio_color_leve !== undefined) stmt.run('precio_color_leve', String(precio_color_leve));
+    if (precio_color_completo !== undefined) stmt.run('precio_color_completo', String(precio_color_completo));
+    if (umbral_bn_max !== undefined) stmt.run('umbral_bn_max', String(umbral_bn_max));
+    if (umbral_leve_max !== undefined) stmt.run('umbral_leve_max', String(umbral_leve_max));
+    if (insumo_producto_id !== undefined) stmt.run('insumo_producto_id', insumo_producto_id ? String(insumo_producto_id) : '');
+    if (insumo_cantidad !== undefined) stmt.run('insumo_cantidad', String(insumo_cantidad));
+    stmt.finalize();
+    res.json({ mensaje: 'Configuración de impresiones e insumo actualizada correctamente.' });
+  });
+});
+
 app.get('/api/configuracion/lealtad', (req, res) => {
   db.all('SELECT * FROM configuracion_lealtad', [], (err, rows) => {
     if (err) return res.status(500).json({ error: err.message });
@@ -1998,6 +2097,306 @@ app.post('/api/sistema/apagar', (req, res) => {
   } else {
     process.exit(0);
   }
+});
+
+const { exec } = require('child_process');
+
+// Función auxiliar para localizar el ejecutable de LibreOffice en Windows
+function obtenerRutaLibreOffice() {
+  const rutasPosibles = [
+    'soffice',
+    'C:\\Program Files\\LibreOffice\\program\\soffice.exe',
+    'C:\\Program Files (x86)\\LibreOffice\\program\\soffice.exe',
+    path.join(__dirname, 'bin', 'libreoffice', 'program', 'soffice.exe')
+  ];
+
+  for (const r of rutasPosibles) {
+    if (r === 'soffice') continue;
+    if (fs.existsSync(r)) return `"${r}"`;
+  }
+  return 'soffice';
+}
+
+// Variable global en memoria para el último PDF listo
+let ultimoPdfImpresionBuffer = null;
+let ultimoNombrePdf = 'documento.pdf';
+
+// Endpoint para guardar PDF directo o imagen
+app.post('/api/impresiones/preparar-pdf', (req, res) => {
+  const { base64Data, nombreArchivo } = req.body;
+  if (!base64Data) {
+    return res.status(400).json({ error: 'Falta base64' });
+  }
+
+  ultimoPdfImpresionBuffer = Buffer.from(base64Data, 'base64');
+  ultimoNombrePdf = nombreArchivo || 'documento.pdf';
+  res.json({ ok: true });
+});
+
+// Endpoint que sirve el PDF con visualización limpia
+app.get('/api/impresiones/ver-pdf-temporal', (req, res) => {
+  if (!ultimoPdfImpresionBuffer) {
+    return res.status(404).send('No hay documento cargado para imprimir');
+  }
+
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', `inline; filename="${ultimoNombrePdf}"`);
+  res.send(ultimoPdfImpresionBuffer);
+});
+
+// Endpoint ÚNICO para convertir DOCX a PDF guardando en memoria
+app.post('/api/impresiones/convertir-docx-a-pdf', (req, res) => {
+  const { nombreArchivo, base64Data } = req.body;
+
+  if (!base64Data) {
+    return res.status(400).json({ error: 'No se recibieron datos del archivo' });
+  }
+
+  const marcaTiempo = Date.now();
+  const dirTemp = os.tmpdir();
+  const docxTemp = path.join(dirTemp, `input_${marcaTiempo}.docx`);
+  const pdfEsperado = path.join(dirTemp, `input_${marcaTiempo}.pdf`);
+
+  try {
+    const buffer = Buffer.from(base64Data, 'base64');
+    fs.writeFileSync(docxTemp, buffer);
+
+    const sofficeCmd = obtenerRutaLibreOffice();
+    const comando = `${sofficeCmd} --headless --convert-to pdf:writer_pdf_Export "${docxTemp}" --outdir "${dirTemp}"`;
+
+    exec(comando, (err, stdout, stderr) => {
+      try { fs.unlinkSync(docxTemp); } catch (e) {}
+
+      if (err || !fs.existsSync(pdfEsperado)) {
+        console.error('Error al convertir con LibreOffice:', err || stderr);
+        return res.status(500).json({
+          error: 'No se pudo convertir el archivo DOCX a PDF.'
+        });
+      }
+
+      const pdfBuffer = fs.readFileSync(pdfEsperado);
+      
+      // Guardar en memoria para que ver-pdf-temporal lo encuentre de inmediato
+      ultimoPdfImpresionBuffer = pdfBuffer;
+      ultimoNombrePdf = nombreArchivo ? nombreArchivo.replace(/\.docx$/i, '.pdf') : 'documento.pdf';
+
+      const pdfBase64 = pdfBuffer.toString('base64');
+
+      try { fs.unlinkSync(pdfEsperado); } catch (e) {}
+
+      res.json({
+        nombreArchivo: ultimoNombrePdf,
+        pdfBase64
+      });
+    });
+  } catch (error) {
+    console.error('Error en proceso de conversión:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/configuracion/tarifas-impresion', (req, res) => {
+  db.all('SELECT * FROM reglas_tarifas_impresion ORDER BY tipo ASC, hasta_porcentaje ASC', [], (err, rows) => {
+    if (err) return res.status(500).json({ error: err.message });
+    const negro = (rows || []).filter(r => r.tipo === 'negro');
+    const color = (rows || []).filter(r => r.tipo === 'color');
+    res.json({ negro, color });
+  });
+});
+
+app.post('/api/configuracion/tarifas-impresion', (req, res) => {
+  const { tipo, nombre, hasta_porcentaje, precio } = req.body;
+  if (!tipo || !nombre || hasta_porcentaje === undefined || precio === undefined) {
+    return res.status(400).json({ error: 'Faltan campos obligatorios' });
+  }
+
+  const sql = `INSERT INTO reglas_tarifas_impresion (tipo, nombre, hasta_porcentaje, precio) VALUES (?, ?, ?, ?)`;
+  db.run(sql, [tipo, nombre.trim(), parseFloat(hasta_porcentaje), parseFloat(precio)], function(err) {
+    if (err) return res.status(500).json({ error: err.message });
+    res.json({ id: this.lastID, mensaje: 'Regla agregada' });
+  });
+});
+
+app.put('/api/configuracion/tarifas-impresion/:id', (req, res) => {
+  const { id } = req.params;
+  const { nombre, hasta_porcentaje, precio } = req.body;
+
+  const sql = `UPDATE reglas_tarifas_impresion SET nombre = ?, hasta_porcentaje = ?, precio = ? WHERE id = ?`;
+  db.run(sql, [nombre.trim(), parseFloat(hasta_porcentaje), parseFloat(precio), id], function(err) {
+    if (err) return res.status(500).json({ error: err.message });
+    res.json({ mensaje: 'Regla actualizada' });
+  });
+});
+
+app.delete('/api/configuracion/tarifas-impresion/:id', (req, res) => {
+  const { id } = req.params;
+  db.run('DELETE FROM reglas_tarifas_impresion WHERE id = ?', [id], function(err) {
+    if (err) return res.status(500).json({ error: err.message });
+    res.json({ mensaje: 'Regla eliminada' });
+  });
+});
+
+// Endpoint para cargar un archivo arrastrado desde su ruta local en Windows (Tauri)
+app.post('/api/impresiones/cargar-desde-ruta', (req, res) => {
+  const { rutaArchivo } = req.body;
+  if (!rutaArchivo || !fs.existsSync(rutaArchivo)) {
+    return res.status(400).json({ error: 'El archivo no existe en el equipo' });
+  }
+
+  try {
+    const nombreArchivo = path.basename(rutaArchivo);
+    const buffer = fs.readFileSync(rutaArchivo);
+    const base64Data = buffer.toString('base64');
+    
+    // Obtener mime type básico
+    const ext = path.extname(rutaArchivo).toLowerCase();
+    let tipo = 'application/octet-stream';
+    if (ext === '.pdf') tipo = 'application/pdf';
+    else if (ext === '.docx') tipo = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+    else if (['.jpg', '.jpeg'].includes(ext)) tipo = 'image/jpeg';
+    else if (ext === '.png') tipo = 'image/png';
+
+    res.json({
+      nombreArchivo,
+      tipo,
+      base64Data
+    });
+  } catch (err) {
+    console.error('Error al leer archivo desde ruta:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+const { execFile } = require('child_process');
+
+app.post('/api/impresiones/procesar-archivo-disco', (req, res) => {
+  const { rutaArchivo } = req.body;
+  console.log('📥 [/api/impresiones/procesar-archivo-disco] Ruta recibida:', rutaArchivo);
+
+  if (!rutaArchivo || !fs.existsSync(rutaArchivo)) {
+    console.error('❌ Archivo inexistente o inaccesible:', rutaArchivo);
+    return res.status(400).json({ error: `El archivo no existe en el equipo: ${rutaArchivo}` });
+  }
+
+  const ext = path.extname(rutaArchivo).toLowerCase();
+  const nombreArchivoOriginal = path.basename(rutaArchivo);
+
+  if (ext === '.docx') {
+    const dirTemp = os.tmpdir();
+    const idTemp = `tauri_${Date.now()}`;
+    const docxTemp = path.join(dirTemp, `${idTemp}.docx`);
+    const pdfEsperado = path.join(dirTemp, `${idTemp}.pdf`);
+
+    try {
+      fs.copyFileSync(rutaArchivo, docxTemp);
+
+      let sofficeExe = 'soffice';
+      const rutasPosibles = [
+        'C:\\Program Files\\LibreOffice\\program\\soffice.exe',
+        'C:\\Program Files (x86)\\LibreOffice\\program\\soffice.exe',
+        path.join(__dirname, 'bin', 'libreoffice', 'program', 'soffice.exe')
+      ];
+      for (const r of rutasPosibles) {
+        if (fs.existsSync(r)) {
+          sofficeExe = r;
+          break;
+        }
+      }
+
+      console.log('⚙️ Ejecutable LibreOffice seleccionado:', sofficeExe);
+
+      // Carpeta de perfil temporal única para aislar cada proceso de LibreOffice
+      const perfilTemp = path.join(dirTemp, `lo_profile_${Date.now()}`);
+      const perfilUri = `file:///${perfilTemp.replace(/\\/g, '/')}`;
+
+      const args = [
+        `-env:UserInstallation=${perfilUri}`,
+        '--headless',
+        '--convert-to',
+        'pdf:writer_pdf_Export',
+        docxTemp,
+        '--outdir',
+        dirTemp
+      ];
+
+      execFile(sofficeExe, args, (err, stdout, stderr) => {
+        try { if (fs.existsSync(docxTemp)) fs.unlinkSync(docxTemp); } catch (e) {}
+
+        if (err || !fs.existsSync(pdfEsperado)) {
+          console.error('❌ Error de LibreOffice:', err || stderr);
+          return res.status(500).json({ 
+            error: `Error LibreOffice: ${err ? err.message : stderr || 'No se generó el PDF esperado'}` 
+          });
+        }
+
+        const pdfBuffer = fs.readFileSync(pdfEsperado);
+        ultimoPdfImpresionBuffer = pdfBuffer;
+        ultimoNombrePdf = nombreArchivoOriginal.replace(/\.docx$/i, '.pdf');
+
+        try { fs.unlinkSync(pdfEsperado); } catch (e) {}
+
+        console.log('✅ DOCX convertido y enviado exitosamente');
+        res.json({
+          nombreArchivo: ultimoNombrePdf,
+          esPdf: true,
+          pdfBase64: pdfBuffer.toString('base64')
+        });
+      });
+    } catch (e) {
+      console.error('❌ Excepción preparando DOCX:', e);
+      res.status(500).json({ error: e.message });
+    }
+  } else if (ext === '.pdf') {
+    try {
+      const pdfBuffer = fs.readFileSync(rutaArchivo);
+      ultimoPdfImpresionBuffer = pdfBuffer;
+      ultimoNombrePdf = nombreArchivoOriginal;
+      res.json({
+        nombreArchivo: ultimoNombrePdf,
+        esPdf: true,
+        pdfBase64: pdfBuffer.toString('base64')
+      });
+    } catch (e) {
+      res.status(500).json({ error: e.message });
+    }
+  } else {
+    try {
+      const imgBuffer = fs.readFileSync(rutaArchivo);
+      res.json({
+        nombreArchivo: nombreArchivoOriginal,
+        esPdf: false,
+        mimeType: ext === '.png' ? 'image/png' : 'image/jpeg',
+        base64Data: imgBuffer.toString('base64')
+      });
+    } catch (e) {
+      res.status(500).json({ error: e.message });
+    }
+  }
+});
+
+// Endpoint para abrir el visor de impresión en Edge desde Tauri/Windows
+app.post('/api/impresiones/lanzar-visor-edge', (req, res) => {
+  const urlPdf = `http://localhost:${PORT || 3001}/api/impresiones/ver-pdf-temporal`;
+  // Comando universal de Windows para abrir la URL en el visor/navegador por defecto
+  const comando = `start "" "${urlPdf}"`;
+
+  exec(comando, (err) => {
+    if (err) console.error('Error en fallback de impresión:', err);
+    res.json({ ok: true });
+  });
+});
+
+// Endpoint para disparar el cuadro de impresión nativo (Ctrl + P) en Windows
+app.post('/api/impresiones/disparar-print-nativo', (req, res) => {
+  // PowerShell simula la pulsación de Ctrl + P en la ventana que tiene el foco
+  const comando = `powershell -Command "$wshell = New-Object -ComObject wscript.shell; Start-Sleep -Milliseconds 150; $wshell.SendKeys('^p')"`;
+
+  exec(comando, (err) => {
+    if (err) {
+      console.warn('Error enviando Ctrl+P por PowerShell:', err);
+    }
+    res.json({ ok: true });
+  });
 });
 
 const PORT = process.env.PORT || 3001;

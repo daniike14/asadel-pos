@@ -1,7 +1,7 @@
 {
   "name": "asadel-pos",
   "private": true,
-  "version": "0.1.4",
+  "version": "0.1.5",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -14,8 +14,11 @@
     "@tauri-apps/plugin-opener": "^2",
     "@tauri-apps/plugin-shell": "^2.5.0",
     "cors": "^2.8.6",
+    "docx-preview": "^0.4.1",
     "express": "^5.2.1",
     "lucide-react": "^1.47.0",
+    "mammoth": "^1.13.0",
+    "pdfjs-dist": "^6.4.299",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "react-router-dom": "^7.18.4",

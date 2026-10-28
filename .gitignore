@@ -30,3 +30,4 @@ dist-ssr
 backups/
 catalogo_productos_importar.csv
 Productos_*.xlsx
+bin/soffice.exe

@@ -2100,59 +2100,85 @@ export default function GestionProductos() {
                                         ) : opciones.aGranel ? (
                                             <>
                                                 <div className="form-group full-width" style={{ background: '#ecfdf5', padding: '10px 14px', borderRadius: '6px', color: '#065f46', fontSize: '0.85rem' }}>
-                                                    ⚖️ <strong>Modo Granel / Fracción:</strong> Ideal para papel por pliego o metro, forro, hule cristal y listones. Permite registrar rollos/cajas y cobrar decimales en caja.
+                                                    ⚖️ <strong>Modo Granel / Fracción:</strong> Ideal para papel por pliego o metro, forro, hule cristal y listones. Permite registrar rollos/cajas, vender decimales en mostrador o vender el rollo completo cerrado con precio especial.
                                                 </div>
                                                 <div className="form-group">
-                                                <label>Fecha de Entrada / Compra:</label>
-                                                <input type="date" name="fechaCompra" value={datosForm.fechaCompra} onChange={handleInputChange} />
-                                            </div>
-                                            <div className="form-group">
-                                                <label>Costo del Rollo o Caja Completa ($):</label>
-                                                <input type="number" step="0.01" name="costoPaquete" value={datosForm.costoPaquete} onChange={handlePrecioChange} placeholder="Ej. 150.00" />
-                                            </div>
-                                            <div className="form-group">
-                                                <label>Metros o Unidades que trae el Rollo/Caja:</label>
-                                                <input type="number" step="any" name="piezasPorPaquete" value={datosForm.piezasPorPaquete} onChange={handlePrecioChange} placeholder="Ej. 50" />
-                                            </div>
-                                            <div className="form-group">
-                                                <label>Costo por Metro / Fracción ($):</label>
-                                                <input type="number" step="0.01" name="costo" value={datosForm.costo} onChange={handlePrecioChange} placeholder="0.00" required />
-                                            </div>
-                                            <div className="form-group">
-                                                <label>Ganancia Deseada (%):</label>
-                                                <input type="number" step="0.1" name="ganancia" value={datosForm.ganancia} onChange={handlePrecioChange} />
-                                            </div>
-                                            <div className="form-group">
-                                                <label>Precio Venta al Público por Metro / Fracción ($):</label>
-                                                <input type="number" step="0.01" name="precioVenta" value={datosForm.precioVenta} onChange={handlePrecioChange} placeholder="0.00" required />
-                                            </div>
-                                            <div className="form-group">
-                                                <label>Existencia Actual (Metros/Kgs en Mostrador):</label>
-                                                <input 
-                                                    type="number" 
-                                                    step="any" 
-                                                    name="invActual" 
-                                                    value={datosForm.invActual} 
-                                                    onChange={handleInputChange} 
-                                                    placeholder="Ej. 25.5" 
-                                                />
-                                            </div>
-                                            <div className="form-group">
-                                                <label>Alerta Mínima de Stock (Metros/Kgs restantes):</label>
-                                                <input 
-                                                    type="number" 
-                                                    step="any" 
-                                                    name="invMinimo" 
-                                                    value={datosForm.invMinimo} 
-                                                    onChange={handleInputChange} 
-                                                    placeholder="Ej. 5" 
-                                                />
-                                            </div>
-                                            <div className="form-group">
-                                                <label>Puntos de Lealtad:</label>
-                                                <input type="number" name="puntosLealtad" value={datosForm.puntosLealtad} onChange={handleInputChange} placeholder="0" />
-                                            </div>
-                                        </>
+                                                    <label>Fecha de Entrada / Compra:</label>
+                                                    <input type="date" name="fechaCompra" value={datosForm.fechaCompra} onChange={handleInputChange} />
+                                                </div>
+                                                <div className="form-group">
+                                                    <label>Costo del Rollo o Caja Completa ($):</label>
+                                                    <input type="number" step="0.01" name="costoPaquete" value={datosForm.costoPaquete} onChange={handlePrecioChange} placeholder="Ej. 150.00" />
+                                                </div>
+                                                <div className="form-group">
+                                                    <label>Metros o Unidades que trae el Rollo/Caja:</label>
+                                                    <input type="number" step="any" name="piezasPorPaquete" value={datosForm.piezasPorPaquete} onChange={handlePrecioChange} placeholder="Ej. 20" />
+                                                </div>
+                                                <div className="form-group">
+                                                    <label>Costo por Metro / Fracción ($):</label>
+                                                    <input type="number" step="0.01" name="costo" value={datosForm.costo} onChange={handlePrecioChange} placeholder="0.00" required />
+                                                </div>
+                                                <div className="form-group">
+                                                    <label>Ganancia Deseada (%):</label>
+                                                    <input type="number" step="0.1" name="ganancia" value={datosForm.ganancia} onChange={handlePrecioChange} />
+                                                </div>
+                                                <div className="form-group">
+                                                    <label>Precio Venta al Público por Metro / Fracción ($):</label>
+                                                    <input type="number" step="0.01" name="precioVenta" value={datosForm.precioVenta} onChange={handlePrecioChange} placeholder="0.00" required />
+                                                </div>
+
+                                                {/* NUEVO: PRECIO ESPECIAL POR EL ROLLO CERRADO COMPLETO */}
+                                                <div className="form-group">
+                                                    <label style={{ color: '#0f172a', fontWeight: 'bold' }}>
+                                                        Precio Venta Rollo Completo ($): <small style={{ fontWeight: 'normal', color: '#64748b' }}>(Opcional)</small>
+                                                    </label>
+                                                    <input 
+                                                        type="number" 
+                                                        step="0.01" 
+                                                        name="precioVentaPaquete" 
+                                                        value={datosForm.precioVentaPaquete} 
+                                                        onChange={handleInputChange} 
+                                                        placeholder="Ej. 250.00" 
+                                                    />
+                                                </div>
+
+                                                <div className="form-group">
+                                                    <label>Existencia Actual (Metros/Kgs en Mostrador):</label>
+                                                    <input 
+                                                        type="number" 
+                                                        step="any" 
+                                                        name="invActual" 
+                                                        value={datosForm.invActual} 
+                                                        onChange={handleInputChange} 
+                                                        placeholder="Ej. 20" 
+                                                    />
+                                                </div>
+                                                <div className="form-group">
+                                                    <label>Alerta Mínima de Stock (Metros/Kgs restantes):</label>
+                                                    <input 
+                                                        type="number" 
+                                                        step="any" 
+                                                        name="invMinimo" 
+                                                        value={datosForm.invMinimo} 
+                                                        onChange={handleInputChange} 
+                                                        placeholder="Ej. 3" 
+                                                    />
+                                                </div>
+                                                <div className="form-group">
+                                                    <label>Puntos de Lealtad:</label>
+                                                    <input type="number" name="puntosLealtad" value={datosForm.puntosLealtad} onChange={handleInputChange} placeholder="0" />
+                                                </div>
+                                                <div className="form-group full-width">
+                                                    <label>Nota del Rollo / Presentación:</label>
+                                                    <input 
+                                                        type="text" 
+                                                        name="notaPaquete" 
+                                                        value={datosForm.notaPaquete} 
+                                                        onChange={handleInputChange} 
+                                                        placeholder="Ej. Rollo de 20 metros x 45 cm ancho..." 
+                                                    />
+                                                </div>
+                                            </>
                                     ) : (
                                         <>
                                             <div className="form-group">
