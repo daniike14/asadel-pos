@@ -40,7 +40,6 @@ function VisorImpresionVentana() {
     const embedEl = document.getElementById('visor-pdf-nativo');
     if (embedEl) {
       try {
-        // En WebView2 de Windows, print() directo sobre el embed abre el diálogo nativo
         embedEl.print();
         return;
       } catch (e) {
@@ -48,7 +47,6 @@ function VisorImpresionVentana() {
       }
     }
 
-    // Fallback: enfocar y llamar print global
     window.focus();
     window.print();
   };
@@ -100,7 +98,6 @@ function VisorImpresionVentana() {
         </div>
       </header>
       
-      {/* Usamos <embed> en lugar de <iframe> para que responda a comandos directos y teclado */}
       <embed
         id="visor-pdf-nativo"
         src={urlPdf}
@@ -112,14 +109,13 @@ function VisorImpresionVentana() {
 }
 
 function App() {
-  // 1. EVALUAR PRIMERO: Si es visor de impresión, NO ejecutar nada del POS ni interceptar la "X"
   if (window.location.search.includes('modo=visor_impresion') || window.location.hash.includes('visor_impresion')) {
     return <VisorImpresionVentana />;
   }
 
-  // A partir de aquí sigue el código normal de tu punto de venta...
   const [iniciandoApp, setIniciandoApp] = useState<boolean>(true);
   const [mostrarModalSalir, setMostrarModalSalir] = useState<boolean>(false);
+  const [procesandoImpresionGlobal, setProcesandoImpresionGlobal] = useState<boolean>(false);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -129,7 +125,6 @@ function App() {
     return () => clearTimeout(timer);
   }, []);
 
-  // Interceptar la "X" de Windows limpiamente a la primera
   useEffect(() => {
     let unlistenFn: (() => void) | null = null;
 
@@ -254,6 +249,62 @@ function App() {
     setModuloActivo(permisosSeguros.includes('dashboard') ? 'dashboard' : 'caja');
   };
 
+// Sondeo global de la Impresora Virtual Asadel
+  useEffect(() => {
+    if (!usuarioActual) return;
+
+    let timerOcultarAviso: NodeJS.Timeout | null = null;
+
+    // Apagado instantáneo al recibir la señal de ModalImpresiones
+    const apagarAvisoAlInstante = () => {
+      if (timerOcultarAviso) clearTimeout(timerOcultarAviso);
+      setProcesandoImpresionGlobal(false);
+    };
+
+    window.addEventListener('asadel-impresiones-completadas', apagarAvisoAlInstante);
+
+    const intervalGlobalBuzon = setInterval(async () => {
+      try {
+        const res = await fetch(`${API_URL}/api/impresiones/buzon-entrante`);
+        if (!res.ok) return;
+
+        const data = await res.json();
+
+        // 1. Mostrar etiqueta solo si el servidor sigue reportando procesamiento
+        if (data.enProceso) {
+          setModuloActivo((act) => (act !== 'impresiones' ? 'impresiones' : act));
+          setProcesandoImpresionGlobal(true);
+        }
+
+        // 2. Al entregar archivos listos
+        if (data.pendientes && data.pendientes.length > 0) {
+          setModuloActivo((act) => (act !== 'impresiones' ? 'impresiones' : act));
+          
+          window.dispatchEvent(new CustomEvent('asadel-nuevas-impresiones-virtuales', {
+            detail: data.pendientes
+          }));
+
+          // Temporizador de rescate por si ocurre algún fallo de red
+          if (timerOcultarAviso) clearTimeout(timerOcultarAviso);
+          timerOcultarAviso = setTimeout(() => {
+            setProcesandoImpresionGlobal(false);
+          }, 4000);
+        } else if (!data.enProceso) {
+          // Si el servidor ya no tiene nada en proceso, liberar etiqueta
+          setProcesandoImpresionGlobal(false);
+        }
+      } catch (e) {
+        // Silencioso
+      }
+    }, 800);
+
+    return () => {
+      clearInterval(intervalGlobalBuzon);
+      if (timerOcultarAviso) clearTimeout(timerOcultarAviso);
+      window.removeEventListener('asadel-impresiones-completadas', apagarAvisoAlInstante);
+    };
+  }, [usuarioActual]);
+
   const cerrarSesion = () => {
     if (window.confirm("¿Seguro que deseas cerrar la sesión actual?")) {
       setUsuarioActual(null);
@@ -267,7 +318,6 @@ function App() {
     setMenuMovilAbierto(false); 
   };
 
-  // Si la ventana fue abierta como visor de impresión dedicado
   if (window.location.search.includes('modo=visor_impresion') || window.location.hash.includes('visor_impresion')) {
     return <VisorImpresionVentana />;
   }
@@ -370,7 +420,6 @@ function App() {
                 </button>
               )}
 
-              {/* MÓDULO ANTES DE EMPRESA */}
               {(usuarioActual.rol === 'admin' || (usuarioActual.permisos || []).includes('impresiones')) && (
                 <button
                   className={moduloActivo === "impresiones" ? "active" : ""}
@@ -440,10 +489,14 @@ function App() {
             {moduloActivo === "reportes" && (usuarioActual.rol === 'admin' || (usuarioActual.permisos || []).includes('reportes')) && (
               <ReportesHistorial volverAlDashboard={() => seleccionarModulo("dashboard")} />
             )}
-            {/* VISTA COMPLETA DE IMPRESIONES */}
-            {moduloActivo === "impresiones" && (usuarioActual.rol === 'admin' || (usuarioActual.permisos || []).includes('impresiones')) && (
-              <ModalImpresiones irAVentas={() => seleccionarModulo("caja")} />
+            
+            {/* VISTA DE IMPRESIONES PERSISTENTE: Se oculta con display: none en vez de desmontarse */}
+            {(usuarioActual.rol === 'admin' || (usuarioActual.permisos || []).includes('impresiones')) && (
+              <div style={{ display: moduloActivo === "impresiones" ? "contents" : "none" }}>
+                <ModalImpresiones irAVentas={() => seleccionarModulo("caja")} />
+              </div>
             )}
+
             {moduloActivo === "empresa" && (usuarioActual.rol === 'admin' || (usuarioActual.permisos || []).includes('empresa')) && (
               <GestionEmpresa volverAlDashboard={() => seleccionarModulo("dashboard")} />
             )}
@@ -525,6 +578,27 @@ function App() {
               </button>
             </div>
           </div>
+        </div>
+      )}
+        {procesandoImpresionGlobal && (
+        <div style={{
+          position: 'fixed',
+          top: '20px',
+          right: '20px',
+          backgroundColor: '#0284c7',
+          color: '#ffffff',
+          padding: '14px 20px',
+          borderRadius: '8px',
+          boxShadow: '0 10px 25px rgba(0,0,0,0.3)',
+          zIndex: 999999,
+          display: 'flex',
+          alignItems: 'center',
+          gap: '12px',
+          fontWeight: 'bold',
+          fontSize: '14px'
+        }}>
+          <span style={{ fontSize: '20px' }}>⏳</span>
+          <span>Recibiendo y analizando páginas de la impresora...</span>
         </div>
       )}
     </>

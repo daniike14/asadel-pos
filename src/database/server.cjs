@@ -2101,53 +2101,148 @@ app.post('/api/sistema/apagar', (req, res) => {
 
 const { exec } = require('child_process');
 
-// Función auxiliar para localizar el ejecutable de LibreOffice en Windows
+// Función auxiliar para localizar LibreOffice en Windows (SIN COMILLAS para execFile)
 function obtenerRutaLibreOffice() {
   const rutasPosibles = [
-    'soffice',
+    // 1. Ruta relativa instalada con Tauri
+    path.join(process.cwd(), 'libreoffice', 'program', 'soffice.exe'),
+    path.join(__dirname, '..', 'libreoffice', 'program', 'soffice.exe'),
+    path.join(__dirname, 'bin', 'libreoffice', 'program', 'soffice.exe'),
+    // 2. Rutas globales de instalación en Windows
     'C:\\Program Files\\LibreOffice\\program\\soffice.exe',
-    'C:\\Program Files (x86)\\LibreOffice\\program\\soffice.exe',
-    path.join(__dirname, 'bin', 'libreoffice', 'program', 'soffice.exe')
+    'C:\\Program Files (x86)\\LibreOffice\\program\\soffice.exe'
   ];
 
   for (const r of rutasPosibles) {
-    if (r === 'soffice') continue;
-    if (fs.existsSync(r)) return `"${r}"`;
+    if (fs.existsSync(r)) return r; // Sin comillas envolventes
   }
   return 'soffice';
 }
 
-// Variable global en memoria para el último PDF listo
-let ultimoPdfImpresionBuffer = null;
-let ultimoNombrePdf = 'documento.pdf';
+// Variable global en memoria para el archivo listo para imprimir
+let ultimoArchivoBuffer = null;
+let ultimoNombreArchivo = 'documento.pdf';
+let ultimoMimeType = 'application/pdf';
 
-// Endpoint para guardar PDF directo o imagen
+// Endpoint para guardar PDF directo o imagen en memoria
 app.post('/api/impresiones/preparar-pdf', (req, res) => {
-  const { base64Data, nombreArchivo } = req.body;
+  const { base64Data, nombreArchivo, mimeType } = req.body;
   if (!base64Data) {
     return res.status(400).json({ error: 'Falta base64' });
   }
 
-  ultimoPdfImpresionBuffer = Buffer.from(base64Data, 'base64');
-  ultimoNombrePdf = nombreArchivo || 'documento.pdf';
+  ultimoArchivoBuffer = Buffer.from(base64Data, 'base64');
+  ultimoNombreArchivo = nombreArchivo || 'documento.pdf';
+  ultimoMimeType = mimeType || (ultimoNombreArchivo.endsWith('.pdf') ? 'application/pdf' : 'image/png');
   res.json({ ok: true });
 });
 
-// Endpoint que sirve el PDF con visualización limpia
+// Endpoint que entrega el archivo temporal para impresión sin caché
 app.get('/api/impresiones/ver-pdf-temporal', (req, res) => {
-  if (!ultimoPdfImpresionBuffer) {
+  if (!ultimoArchivoBuffer) {
     return res.status(404).send('No hay documento cargado para imprimir');
   }
 
+  // Si es imagen, la servimos envuelta en un HTML limpio tamaño carta listo para imprimir
+  if (ultimoMimeType.startsWith('image/')) {
+    const base64Img = ultimoArchivoBuffer.toString('base64');
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+    return res.send(`
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Impresión - ${ultimoNombreArchivo}</title>
+        <style>
+          * { margin: 0; padding: 0; box-sizing: border-box; }
+          body { 
+            background: #1e293b; 
+            display: flex; 
+            flex-direction: column; 
+            align-items: center; 
+            justify-content: center; 
+            min-height: 100vh;
+            font-family: sans-serif;
+          }
+          .toolbar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 48px;
+            background: #0f172a;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 20px;
+            color: #fff;
+            border-bottom: 1px solid #334155;
+            z-index: 100;
+          }
+          .btn-print {
+            background: #16a34a;
+            color: #fff;
+            border: none;
+            padding: 8px 18px;
+            border-radius: 6px;
+            font-weight: bold;
+            font-size: 13px;
+            cursor: pointer;
+          }
+          .page-sheet {
+            background: #fff;
+            width: 215.9mm;
+            min-height: 279.4mm;
+            margin: 60px auto 20px auto;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 10mm;
+          }
+          .page-sheet img {
+            max-width: 100%;
+            max-height: 250mm;
+            object-fit: contain;
+          }
+          @media print {
+            body { background: #fff !important; }
+            .toolbar { display: none !important; }
+            .page-sheet { 
+              margin: 0 !important; 
+              box-shadow: none !important; 
+              padding: 0 !important;
+              width: 100% !important;
+              height: 100% !important;
+            }
+          }
+        </style>
+      </head>
+      <body>
+        <div class="toolbar">
+          <span>🖼️ Vista Previa de Imagen - Papelería Asadel</span>
+          <button class="btn-print" onclick="window.print()">🖨️ Mandar a Imprimir</button>
+        </div>
+        <div class="page-sheet">
+          <img src="data:${ultimoMimeType};base64,${base64Img}" alt="Imagen a imprimir" />
+        </div>
+      </body>
+      </html>
+    `);
+  }
+
+  // Si es PDF
   res.setHeader('Content-Type', 'application/pdf');
-  res.setHeader('Content-Disposition', `inline; filename="${ultimoNombrePdf}"`);
-  res.send(ultimoPdfImpresionBuffer);
+  res.setHeader('Content-Disposition', `inline; filename="${ultimoNombreArchivo}"`);
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+  res.send(ultimoArchivoBuffer);
 });
 
-// Endpoint ÚNICO para convertir DOCX a PDF guardando en memoria
+// Endpoint ÚNICO para convertir DOCX a PDF (Selección manual)
 app.post('/api/impresiones/convertir-docx-a-pdf', (req, res) => {
   const { nombreArchivo, base64Data } = req.body;
-
   if (!base64Data) {
     return res.status(400).json({ error: 'No se recibieron datos del archivo' });
   }
@@ -2161,36 +2256,37 @@ app.post('/api/impresiones/convertir-docx-a-pdf', (req, res) => {
     const buffer = Buffer.from(base64Data, 'base64');
     fs.writeFileSync(docxTemp, buffer);
 
-    const sofficeCmd = obtenerRutaLibreOffice();
-    const comando = `${sofficeCmd} --headless --convert-to pdf:writer_pdf_Export "${docxTemp}" --outdir "${dirTemp}"`;
+    const sofficeExe = obtenerRutaLibreOffice();
+    const perfilTemp = path.join(dirTemp, `lo_prof_${marcaTiempo}`);
+    const perfilUri = `file:///${perfilTemp.replace(/\\/g, '/')}`;
 
-    exec(comando, (err, stdout, stderr) => {
-      try { fs.unlinkSync(docxTemp); } catch (e) {}
+    const comando = `"${sofficeExe}" -env:UserInstallation="${perfilUri}" --headless --convert-to pdf:writer_pdf_Export "${docxTemp}" --outdir "${dirTemp}"`;
+
+    exec(comando, { timeout: 30000 }, (err, stdout, stderr) => {
+      try { if (fs.existsSync(docxTemp)) fs.unlinkSync(docxTemp); } catch (e) {}
 
       if (err || !fs.existsSync(pdfEsperado)) {
-        console.error('Error al convertir con LibreOffice:', err || stderr);
-        return res.status(500).json({
-          error: 'No se pudo convertir el archivo DOCX a PDF.'
-        });
+        console.error('Error convirtiendo DOCX manual:', err || stderr);
+        return res.status(500).json({ error: 'Error al convertir el documento Word a PDF.' });
       }
 
       const pdfBuffer = fs.readFileSync(pdfEsperado);
       
-      // Guardar en memoria para que ver-pdf-temporal lo encuentre de inmediato
-      ultimoPdfImpresionBuffer = pdfBuffer;
-      ultimoNombrePdf = nombreArchivo ? nombreArchivo.replace(/\.docx$/i, '.pdf') : 'documento.pdf';
+      // Actualizar variables en memoria para la vista previa
+      ultimoArchivoBuffer = pdfBuffer;
+      ultimoNombreArchivo = nombreArchivo ? nombreArchivo.replace(/\.docx$/i, '.pdf') : 'documento.pdf';
+      ultimoMimeType = 'application/pdf';
 
-      const pdfBase64 = pdfBuffer.toString('base64');
-
-      try { fs.unlinkSync(pdfEsperado); } catch (e) {}
+      try { if (fs.existsSync(pdfEsperado)) fs.unlinkSync(pdfEsperado); } catch (e) {}
 
       res.json({
-        nombreArchivo: ultimoNombrePdf,
-        pdfBase64
+        nombreArchivo: ultimoNombreArchivo,
+        esPdf: true,
+        pdfBase64: pdfBuffer.toString('base64')
       });
     });
   } catch (error) {
-    console.error('Error en proceso de conversión:', error);
+    console.error('Excepción convirtiendo DOCX manual:', error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -2269,13 +2365,11 @@ app.post('/api/impresiones/cargar-desde-ruta', (req, res) => {
 
 const { execFile } = require('child_process');
 
+// Endpoint para arrastrar desde disco en Tauri
 app.post('/api/impresiones/procesar-archivo-disco', (req, res) => {
   const { rutaArchivo } = req.body;
-  console.log('📥 [/api/impresiones/procesar-archivo-disco] Ruta recibida:', rutaArchivo);
-
   if (!rutaArchivo || !fs.existsSync(rutaArchivo)) {
-    console.error('❌ Archivo inexistente o inaccesible:', rutaArchivo);
-    return res.status(400).json({ error: `El archivo no existe en el equipo: ${rutaArchivo}` });
+    return res.status(400).json({ error: `El archivo no existe: ${rutaArchivo}` });
   }
 
   const ext = path.extname(rutaArchivo).toLowerCase();
@@ -2283,89 +2377,73 @@ app.post('/api/impresiones/procesar-archivo-disco', (req, res) => {
 
   if (ext === '.docx') {
     const dirTemp = os.tmpdir();
-    const idTemp = `tauri_${Date.now()}`;
-    const docxTemp = path.join(dirTemp, `${idTemp}.docx`);
-    const pdfEsperado = path.join(dirTemp, `${idTemp}.pdf`);
+    const marca = Date.now();
+    const docxTemp = path.join(dirTemp, `tauri_${marca}.docx`);
+    const pdfEsperado = path.join(dirTemp, `tauri_${marca}.pdf`);
 
     try {
       fs.copyFileSync(rutaArchivo, docxTemp);
 
-      let sofficeExe = 'soffice';
-      const rutasPosibles = [
-        'C:\\Program Files\\LibreOffice\\program\\soffice.exe',
-        'C:\\Program Files (x86)\\LibreOffice\\program\\soffice.exe',
-        path.join(__dirname, 'bin', 'libreoffice', 'program', 'soffice.exe')
-      ];
-      for (const r of rutasPosibles) {
-        if (fs.existsSync(r)) {
-          sofficeExe = r;
-          break;
-        }
-      }
-
-      console.log('⚙️ Ejecutable LibreOffice seleccionado:', sofficeExe);
-
-      // Carpeta de perfil temporal única para aislar cada proceso de LibreOffice
-      const perfilTemp = path.join(dirTemp, `lo_profile_${Date.now()}`);
+      const sofficeExe = obtenerRutaLibreOffice();
+      const perfilTemp = path.join(dirTemp, `lo_tauri_${marca}`);
       const perfilUri = `file:///${perfilTemp.replace(/\\/g, '/')}`;
 
-      const args = [
-        `-env:UserInstallation=${perfilUri}`,
-        '--headless',
-        '--convert-to',
-        'pdf:writer_pdf_Export',
-        docxTemp,
-        '--outdir',
-        dirTemp
-      ];
+      const comando = `"${sofficeExe}" -env:UserInstallation="${perfilUri}" --headless --convert-to pdf:writer_pdf_Export "${docxTemp}" --outdir "${dirTemp}"`;
 
-      execFile(sofficeExe, args, (err, stdout, stderr) => {
+      exec(comando, { timeout: 30000 }, (err, stdout, stderr) => {
         try { if (fs.existsSync(docxTemp)) fs.unlinkSync(docxTemp); } catch (e) {}
 
         if (err || !fs.existsSync(pdfEsperado)) {
-          console.error('❌ Error de LibreOffice:', err || stderr);
-          return res.status(500).json({ 
-            error: `Error LibreOffice: ${err ? err.message : stderr || 'No se generó el PDF esperado'}` 
-          });
+          console.error('Error al convertir DOCX arrastrado:', err || stderr);
+          return res.status(500).json({ error: 'No se pudo convertir el archivo DOCX arrastrado.' });
         }
 
         const pdfBuffer = fs.readFileSync(pdfEsperado);
-        ultimoPdfImpresionBuffer = pdfBuffer;
-        ultimoNombrePdf = nombreArchivoOriginal.replace(/\.docx$/i, '.pdf');
+        ultimoArchivoBuffer = pdfBuffer;
+        ultimoNombreArchivo = nombreArchivoOriginal.replace(/\.docx$/i, '.pdf');
+        ultimoMimeType = 'application/pdf';
 
-        try { fs.unlinkSync(pdfEsperado); } catch (e) {}
+        try { if (fs.existsSync(pdfEsperado)) fs.unlinkSync(pdfEsperado); } catch (e) {}
 
-        console.log('✅ DOCX convertido y enviado exitosamente');
         res.json({
-          nombreArchivo: ultimoNombrePdf,
+          nombreArchivo: ultimoNombreArchivo,
           esPdf: true,
+          mimeType: 'application/pdf',
           pdfBase64: pdfBuffer.toString('base64')
         });
       });
     } catch (e) {
-      console.error('❌ Excepción preparando DOCX:', e);
+      console.error('Excepción procesando DOCX arrastrado:', e);
       res.status(500).json({ error: e.message });
     }
   } else if (ext === '.pdf') {
     try {
       const pdfBuffer = fs.readFileSync(rutaArchivo);
-      ultimoPdfImpresionBuffer = pdfBuffer;
-      ultimoNombrePdf = nombreArchivoOriginal;
+      ultimoArchivoBuffer = pdfBuffer;
+      ultimoNombreArchivo = nombreArchivoOriginal;
+      ultimoMimeType = 'application/pdf';
       res.json({
-        nombreArchivo: ultimoNombrePdf,
+        nombreArchivo: ultimoNombreArchivo,
         esPdf: true,
+        mimeType: 'application/pdf',
         pdfBase64: pdfBuffer.toString('base64')
       });
     } catch (e) {
       res.status(500).json({ error: e.message });
     }
   } else {
+    // Imágenes (PNG, JPG, JPEG, WEBP)
     try {
       const imgBuffer = fs.readFileSync(rutaArchivo);
+      const mime = ext === '.png' ? 'image/png' : (ext === '.webp' ? 'image/webp' : 'image/jpeg');
+      ultimoArchivoBuffer = imgBuffer;
+      ultimoNombreArchivo = nombreArchivoOriginal;
+      ultimoMimeType = mime;
+
       res.json({
         nombreArchivo: nombreArchivoOriginal,
         esPdf: false,
-        mimeType: ext === '.png' ? 'image/png' : 'image/jpeg',
+        mimeType: mime,
         base64Data: imgBuffer.toString('base64')
       });
     } catch (e) {
@@ -2373,6 +2451,7 @@ app.post('/api/impresiones/procesar-archivo-disco', (req, res) => {
     }
   }
 });
+
 
 // Endpoint para abrir el visor de impresión en Edge desde Tauri/Windows
 app.post('/api/impresiones/lanzar-visor-edge', (req, res) => {
@@ -2398,6 +2477,115 @@ app.post('/api/impresiones/disparar-print-nativo', (req, res) => {
     res.json({ ok: true });
   });
 });
+
+// --- VIGILANTE DE IMPRESORA VIRTUAL ---
+const RUTA_BUZON_IMPRESIONES = 'C:\\AsadelPOS\\BuzonImpresiones';
+const RUTA_HISTORIAL_IMPRESIONES = 'C:\\AsadelPOS\\HistorialImpresiones';
+
+if (!fs.existsSync(RUTA_BUZON_IMPRESIONES)) fs.mkdirSync(RUTA_BUZON_IMPRESIONES, { recursive: true });
+if (!fs.existsSync(RUTA_HISTORIAL_IMPRESIONES)) fs.mkdirSync(RUTA_HISTORIAL_IMPRESIONES, { recursive: true });
+
+let colaArchivosDetectados = [];
+let archivosEnProceso = new Set();
+let hayImpresionEnCola = false; // <-- 1. Bandera para avisar de inmediato
+
+// Endpoint para que el Frontend consulte el estado
+app.get('/api/impresiones/buzon-entrante', (req, res) => {
+  const pendientes = [...colaArchivosDetectados];
+  colaArchivosDetectados = [];
+
+  const enCurso = archivosEnProceso.size > 0;
+  if (!enCurso && pendientes.length === 0) {
+    hayImpresionEnCola = false;
+  }
+
+  res.json({
+    pendientes,
+    enProceso: enCurso || hayImpresionEnCola
+  });
+});
+
+function procesarPdfCuandoEsteListo(rutaCompleta, filename, reintentos = 35) {
+  if (archivosEnProceso.has(filename)) return;
+  archivosEnProceso.add(filename);
+  hayImpresionEnCola = true; // <-- 2. Notifica a la app que comenzó la impresión
+
+  let intentos = 0;
+  const intervalo = setInterval(() => {
+    intentos++;
+    try {
+      if (fs.existsSync(rutaCompleta)) {
+        const stats = fs.statSync(rutaCompleta);
+        if (stats.size > 1024) {
+          const fd = fs.openSync(rutaCompleta, 'r+');
+          fs.closeSync(fd);
+
+          clearInterval(intervalo);
+          console.log('🖨️ PDF listo y liberado por Windows:', filename);
+
+          const buffer = fs.readFileSync(rutaCompleta);
+          const timestamp = getFechaHoraLocal().replace(/[:.]/g, '-');
+          const nombreArchivoRespaldo = `IMP_${timestamp}.pdf`;
+          const rutaDestinoRespaldo = path.join(RUTA_HISTORIAL_IMPRESIONES, nombreArchivoRespaldo);
+
+          try {
+            fs.renameSync(rutaCompleta, rutaDestinoRespaldo);
+          } catch {
+            fs.copyFileSync(rutaCompleta, rutaDestinoRespaldo);
+            try { fs.unlinkSync(rutaCompleta); } catch (e) {}
+          }
+
+          colaArchivosDetectados.push({
+            nombreArchivo: nombreArchivoRespaldo,
+            pdfBase64: buffer.toString('base64')
+          });
+
+          archivosEnProceso.delete(filename);
+          hayImpresionEnCola = archivosEnProceso.size > 0;
+        }
+      }
+    } catch (e) {
+      // Windows sigue escribiendo
+    }
+
+    if (intentos >= reintentos) {
+      clearInterval(intervalo);
+      archivosEnProceso.delete(filename);
+      hayImpresionEnCola = archivosEnProceso.size > 0;
+    }
+  }, 300);
+}
+
+fs.watch(RUTA_BUZON_IMPRESIONES, (eventType, filename) => {
+  if (filename && filename.toLowerCase().endsWith('.pdf')) {
+    hayImpresionEnCola = true; // <-- 3. En cuanto Windows toca la carpeta, se activa la alerta
+    const rutaCompleta = path.join(RUTA_BUZON_IMPRESIONES, filename);
+    procesarPdfCuandoEsteListo(rutaCompleta, filename);
+  }
+});
+
+// Purga de respaldos con más de 7 días de antigüedad
+function limpiarHistorialAntiguo(diasRetencion = 7) {
+  try {
+    const ahora = Date.now();
+    const limiteMs = diasRetencion * 24 * 60 * 60 * 1000;
+    if (fs.existsSync(RUTA_HISTORIAL_IMPRESIONES)) {
+      const archivos = fs.readdirSync(RUTA_HISTORIAL_IMPRESIONES);
+      archivos.forEach((archivo) => {
+        const ruta = path.join(RUTA_HISTORIAL_IMPRESIONES, archivo);
+        const stats = fs.statSync(ruta);
+        if (ahora - stats.mtimeMs > limiteMs) {
+          fs.unlinkSync(ruta);
+          console.log(`🗑️ Eliminado respaldo antiguo: ${archivo}`);
+        }
+      });
+    }
+  } catch (err) {
+    console.warn('Error limpiando historial antiguo de impresiones:', err.message);
+  }
+}
+
+limpiarHistorialAntiguo(7);
 
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {

@@ -1,31 +1,32 @@
+/* Contenedor principal de la página */
 .impresiones-page-container {
   display: flex;
   flex-direction: column;
-  height: 100%;
-  padding: 16px 24px;
-  background-color: #f8fafc;
+  height: 100vh;
+  padding: 10px 16px;
   box-sizing: border-box;
-  overflow-y: auto;
+  background-color: #f8fafc;
+  overflow: hidden; /* Evita scrolls dobles en la ventana */
 }
 
+/* Encabezado compacto */
 .impresiones-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 14px;
-  border-bottom: 1px solid #e2e8f0;
-  padding-bottom: 10px;
+  margin-bottom: 8px;
+  flex-shrink: 0;
 }
 
 .impresiones-header h2 {
+  font-size: 16px;
   margin: 0;
-  font-size: 20px;
   color: #0f172a;
 }
 
 .impresiones-header p {
-  margin: 4px 0 0 0;
-  font-size: 13px;
+  font-size: 12px;
+  margin: 2px 0 0 0;
   color: #64748b;
 }
 
@@ -74,23 +75,25 @@
   border-radius: 6px;
 }
 
+/* Cuerpo que contiene la barra de herramientas, miniaturas y footer */
 .impresiones-body {
-  margin-top: 16px;
   display: flex;
   flex-direction: column;
-  flex: 1;
+  flex: 1; /* Ocupa todo el alto disponible */
+  min-height: 0; /* Permite que el scroll interno funcione adecuadamente */
+  gap: 8px;
 }
 
+/* Barra con el nombre del archivo y botón forzar B/N */
 .impresiones-toolbar {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  padding: 6px 12px;
   background-color: #ffffff;
-  padding: 10px 14px;
+  border: 1px solid #e2e8f0;
   border-radius: 6px;
-  border: 1px solid #cbd5e1;
-  font-size: 13px;
-  margin-bottom: 12px;
+  flex-shrink: 0;
 }
 
 .toolbar-actions {
@@ -117,49 +120,58 @@
   border-color: #0284c7;
 }
 
+/* CUADRÍCULA DE HOJAS EXPANDIDA */
 .impresiones-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-  gap: 12px;
-  max-height: 380px;
-  overflow-y: auto;
-  padding: 4px;
-  margin-bottom: 16px;
+  /* Columnas automáticas responsivas de mínimo 130px para que quepan muchas más */
+  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+  gap: 10px;
+  flex: 1; /* Se estira en toda el área libre */
+  overflow-y: auto; /* Scroll vertical exclusivo de las miniaturas */
+  padding: 6px;
+  background-color: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  box-sizing: border-box;
+  align-content: start;
 }
 
+/* Tarjeta individual de cada hoja */
 .hoja-card {
-  background-color: #ffffff;
-  border: 1px solid #cbd5e1;
-  border-radius: 6px;
-  padding: 8px;
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+  background-color: #ffffff;
+  border: 1.5px solid #cbd5e1;
+  border-radius: 6px;
+  padding: 6px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  transition: transform 0.15s ease, border-color 0.15s ease;
 }
 
-.hoja-card.bn {
-  border-top: 4px solid #64748b;
+.hoja-card:hover {
+  border-color: #3b82f6;
+  transform: translateY(-2px);
 }
 
-.hoja-card.color_leve {
-  border-top: 4px solid #0284c7;
+.hoja-card.color {
+  border-left: 4px solid #f59e0b;
 }
 
-.hoja-card.color_completo {
-  border-top: 4px solid #16a34a;
+.hoja-card.negro {
+  border-left: 4px solid #64748b;
 }
 
+/* Vista previa de la hoja */
 .hoja-preview {
   position: relative;
   width: 100%;
-  height: 140px;
-  background-color: #f1f5f9;
+  height: 140px; /* Altura ideal para ver el contenido sin ocupar demasiado espacio */
   display: flex;
   align-items: center;
   justify-content: center;
-  overflow: hidden;
+  background-color: #f1f5f9;
   border-radius: 4px;
+  overflow: hidden;
 }
 
 .hoja-preview img {
@@ -172,41 +184,50 @@
   position: absolute;
   top: 4px;
   left: 4px;
-  background-color: rgba(15, 23, 42, 0.8);
+  background-color: #0f172a;
   color: #ffffff;
-  padding: 2px 6px;
-  border-radius: 3px;
   font-size: 10px;
   font-weight: bold;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+/* Controles de selección de tarifa por hoja */
+.hoja-controles {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 6px;
 }
 
 .select-hoja {
   width: 100%;
   padding: 4px;
   font-size: 11px;
-  border-radius: 4px;
-  border: 1px solid #cbd5e1;
   font-weight: 600;
+  border: 1px solid #cbd5e1;
+  border-radius: 4px;
+  background-color: #f8fafc;
+  outline: none;
 }
 
 .hoja-cobertura {
   font-size: 11px;
   color: #64748b;
-  display: block;
   text-align: right;
-  margin-top: 2px;
 }
 
+/* Barra inferior de total y cobro pegada abajo */
 .impresiones-footer-banner {
-  margin-top: auto;
-  background-color: #ffffff;
-  border: 1px solid #cbd5e1;
-  border-radius: 8px;
-  padding: 12px 18px;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  box-shadow: 0 4px 6px -1px rgba(0,0,0,0.08);
+  padding: 10px 16px;
+  background-color: #ffffff;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  flex-shrink: 0;
+  box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.03);
 }
 
 .resumen-estadisticas {
@@ -332,4 +353,216 @@
   border-color: #16a34a !important;
   background-color: #f0fdf4 !important;
   transform: scale(1.01);
+}
+
+/* Efecto hover y cursor en la miniatura */
+.hoja-preview {
+  position: relative;
+  cursor: pointer;
+  transition: opacity 0.15s ease;
+}
+
+.hoja-preview:hover img {
+  filter: brightness(0.92);
+}
+
+/* Botón flotante con ícono de lupa sobre la hoja al pasar el cursor */
+.btn-ver-hoja-hover {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%) scale(0.85);
+  background-color: rgba(15, 23, 42, 0.85);
+  color: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  border-radius: 50%;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  cursor: pointer;
+  opacity: 0;
+  pointer-events: none;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
+}
+
+.hoja-preview:hover .btn-ver-hoja-hover {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translate(-50%, -50%) scale(1);
+}
+
+.btn-ver-hoja-hover:hover {
+  background-color: #2563eb;
+  transform: translate(-50%, -50%) scale(1.1);
+}
+
+/* Modal Visor Flotante de Página */
+.modal-visor-hoja-overlay {
+  position: fixed;
+  inset: 0;
+  background-color: rgba(15, 23, 42, 0.85);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10050;
+  animation: fadeInVisor 0.15s ease-out;
+}
+
+@keyframes fadeInVisor {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.modal-visor-hoja-content {
+  background-color: #1e293b;
+  border: 1px solid #334155;
+  border-radius: 10px;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+  display: flex;
+  flex-direction: column;
+  max-width: 90vw;
+  max-height: 94vh;
+  overflow: hidden;
+}
+
+.visor-hoja-header {
+  height: 48px;
+  min-height: 48px;
+  padding: 0 16px;
+  background-color: #0f172a;
+  border-bottom: 1px solid #334155;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.btn-cerrar-visor-hoja {
+  background: none;
+  border: none;
+  color: #94a3b8;
+  font-size: 20px;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 4px;
+  transition: all 0.15s;
+}
+
+.btn-cerrar-visor-hoja:hover {
+  color: #ffffff;
+  background-color: #dc2626;
+}
+
+.visor-hoja-body {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px 20px;
+  background-color: #0f172a;
+  overflow: auto;
+}
+
+.visor-hoja-sheet {
+  background-color: #ffffff;
+  padding: 6px;
+  border-radius: 6px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  max-height: 82vh;
+}
+
+.visor-hoja-sheet img {
+  max-width: 100%;
+  max-height: 80vh;
+  object-fit: contain;
+  border-radius: 4px;
+}
+
+/* Botones de navegación anterior / siguiente */
+.btn-nav-visor {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  background-color: rgba(30, 41, 59, 0.85);
+  color: #ffffff;
+  border: 1px solid #475569;
+  border-radius: 50%;
+  width: 44px;
+  height: 44px;
+  font-size: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  z-index: 10;
+}
+
+.btn-nav-visor:hover {
+  background-color: #2563eb;
+  border-color: #3b82f6;
+  transform: translateY(-50%) scale(1.1);
+}
+
+.btn-nav-visor.prev {
+  left: 24px;
+}
+
+.btn-nav-visor.next {
+  right: 24px;
+}
+
+/* Checkbox flotante en la esquina superior derecha de la hoja */
+.checkbox-hoja-container {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  z-index: 5;
+  background-color: rgba(255, 255, 255, 0.95);
+  border-radius: 4px;
+  padding: 3px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
+  border: 1px solid #cbd5e1;
+}
+
+.checkbox-hoja-container input[type="checkbox"] {
+  width: 17px;
+  height: 17px;
+  cursor: pointer;
+  accent-color: #16a34a;
+  margin: 0;
+}
+
+/* Estado atenuado para hojas no seleccionadas */
+.hoja-card.hoja-deseleccionada {
+  opacity: 0.42;
+  filter: grayscale(80%);
+  border-style: dashed;
+  background-color: #f1f5f9;
+}
+
+.hoja-card.hoja-deseleccionada:hover {
+  opacity: 0.75;
+  filter: grayscale(30%);
+}
+
+/* Cuando la tarjeta es de tipo negro, su miniatura se muestra en blanco y negro */
+.hoja-card.negro .hoja-preview img {
+  filter: grayscale(100%) contrast(105%);
+}
+
+/* Cuando una hoja negra se abre en el visor en grande, también se muestra en blanco y negro */
+.visor-hoja-sheet img.hoja-img-bn {
+  filter: grayscale(100%) contrast(105%);
 }

@@ -751,24 +751,24 @@ export default function GestionProductos() {
     };
 
     const handleInputChange = (e) => {
-        const { name, value, selectionStart, selectionEnd } = e.target;
+        const target = e.target;
+        const { name, value, selectionStart, selectionEnd } = target;
         let valorFormateado = value;
 
         if (name === 'codigoBarras') {
             valorFormateado = value.toUpperCase();
         } else if (['nombre', 'locacion', 'atributoColor', 'notaPaquete'].includes(name)) {
-            // Capitaliza la primera letra y la primera letra después de cada espacio sin alterar las demás
             valorFormateado = value.replace(/(?:^|\s)\p{L}/gu, (match) => match.toUpperCase());
-
-            // Preserva la posición original del cursor tras formatear
-            if (e.target.setSelectionRange && selectionStart !== null) {
-                requestAnimationFrame(() => {
-                    e.target.setSelectionRange(selectionStart, selectionEnd);
-                });
-            }
         }
 
         setDatosForm((prev) => ({ ...prev, [name]: valorFormateado }));
+
+        // Preserva la posición exacta del cursor en el input sin enviarlo al final
+        if (target.setSelectionRange && selectionStart !== null) {
+            requestAnimationFrame(() => {
+                target.setSelectionRange(selectionStart, selectionEnd);
+            });
+        }
     };
 
     const handleImagenChange = (e, campo) => {

@@ -301,6 +301,7 @@ export default function PuntoDeVenta() {
             stock: stockPiezas,
             invMinimo: parseFloat(p.invMinimo) || 0,
             piezasPorPaquete: piezasPorPaq,
+            notaPaquete: p.notaPaquete || '',
             imagenLocacion: p.imagenLocacion || '',
             puntosLealtad: parseInt(p.puntosLealtad) || 0,
             aGranel: Boolean(p.aGranel),
@@ -332,6 +333,7 @@ export default function PuntoDeVenta() {
               stockPiezasBase: stockPiezas,
               invMinimo: Math.floor((parseFloat(p.invMinimo) || 0) / piezasPorPaq),
               piezasPorPaquete: piezasPorPaq,
+              notaPaquete: p.notaPaquete || '',
               imagenLocacion: p.imagenLocacion || '',
               puntosLealtad: (parseInt(p.puntosLealtad) || 0) * piezasPorPaq,
               aGranel: false, // El rollo completo se vende como pieza unitaria
@@ -1690,6 +1692,32 @@ export default function PuntoDeVenta() {
                   TICKET PENDIENTE 
                 </button>
               </div>
+              {/* NUEVA TARJETA: NOTA / DETALLE DEL PRODUCTO SELECCIONADO */}
+            {(() => {
+              const notaMostrar = productoSeleccionado?.notaPaquete || 
+                                  productoFresco?.notaPaquete || 
+                                  productoSeleccionado?.comentario || 
+                                  '';
+
+              return (
+                <div className="pos-nota-card">
+                  <div className="pos-nota-header">
+                    <span>📝 Nota / Descripción:</span>
+                  </div>
+                  <div className="pos-nota-body">
+                    {productoSeleccionado ? (
+                      notaMostrar.trim() ? (
+                        <p className="pos-nota-texto">{notaMostrar}</p>
+                      ) : (
+                        <span className="pos-nota-vacia">Sin notas registradas para este producto.</span>
+                      )
+                    ) : (
+                      <span className="pos-nota-vacia">Selecciona un producto del carrito para ver sus notas.</span>
+                    )}
+                  </div>
+                </div>
+              );
+            })()}
             </div>
           </div>
         </>

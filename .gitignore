@@ -30,4 +30,7 @@ dist-ssr
 backups/
 catalogo_productos_importar.csv
 Productos_*.xlsx
-bin/soffice.exe
+# LibreOffice portable / binarios pesados
+libreoffice/
+bin/libreoffice/
+src-tauri/bin/libreoffice/
